@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Provide a Material 3 DayNight theme variant without an action bar so existing references remain valid. -->
+    <style name="Theme.Material3.DayNight.NoActionBar" parent="Theme.Material3.DayNight">
+        <item name="android:windowActionBar">false</item>
+        <item name="windowActionBar">false</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
 
-    <style name="Theme.Procard" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Application-wide theme that composes on top of the NoActionBar variant. -->
+    <style name="Theme.Procard" parent="Theme.Material3.DayNight.NoActionBar" />
 </resources>
