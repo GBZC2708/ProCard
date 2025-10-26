@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <style name="Theme.Material3.DayNight" parent="Theme.MaterialComponents.DayNight" />
 
-    <style name="Theme.Procard" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.Material3.DayNight.NoActionBar" parent="Theme.Material3.DayNight">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+    </style>
+
+    <style name="Theme.Procard" parent="Theme.Material3.DayNight.NoActionBar" />
 </resources>
