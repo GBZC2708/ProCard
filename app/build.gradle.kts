@@ -7,13 +7,13 @@ plugins {
 
 android {
     namespace = "com.example.procard"
-    compileSdk = 35 // Usa la que proponga tu asistente; 35/36 es común en 2025
+    compileSdk = 36 // Usa la que proponga tu asistente; 35/36 es común en 2025
 
 
     defaultConfig {
         applicationId = "com.example.procard"
         minSdk = 24
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
     }
