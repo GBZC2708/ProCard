@@ -4,7 +4,6 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-
 android {
     namespace = "com.example.procard"
     compileSdk = 36 // Usa la que proponga tu asistente; 35/36 es común en 2025
@@ -20,7 +19,6 @@ android {
     buildFeatures { compose = true }
     kotlinOptions { jvmTarget = "17" }
 }
-
 
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
