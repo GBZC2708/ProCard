@@ -43,7 +43,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -56,6 +59,10 @@ import com.example.procard.navigation.NavRoute
 import com.example.procard.ui.components.AppHeader
 import com.example.procard.ui.components.ErrorBanner
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.toMutableStateList
+
 
 private enum class DayStatus(val displayColor: Color, val message: String) {
     Excellent(Color(0xFF43A047), "¡Excelente día!"),
@@ -108,22 +115,18 @@ private fun ProgressContent() {
     var selectedWeeks by rememberSaveable { mutableStateOf(4) }
     val totalDays = selectedWeeks * DAYS_PER_WEEK
 
-    val saver = remember {
-        Saver(
-            save = { stateList -> stateList.map(DayStatus::ordinal) },
-            restore = { values ->
-                mutableStateListOf<DayStatus>().apply {
-                    values.mapTo(this) { DayStatus.values()[it] }
-                }
-            }
+// Lista de estados por día, persistente con rememberSaveable
+    val dayStates: SnapshotStateList<DayStatus> = rememberSaveable(
+        // Guardamos como lista de enteros (ordinales) y restauramos a SnapshotStateList
+        saver = listSaver(
+            save = { list -> list.map(DayStatus::ordinal) },
+            restore = { ords -> ords.map { DayStatus.values()[it] }.toMutableStateList() }
         )
+    ) {
+        // Al iniciar: todas las coronas en ROJO (Pending)
+        List(totalDays) { DayStatus.Pending }.toMutableStateList()
     }
 
-    val dayStates = rememberSaveable(stateSaver = saver) {
-        mutableStateListOf<DayStatus>().apply {
-            repeat(totalDays) { add(DayStatus.Pending) }
-        }
-    }
 
     LaunchedEffect(totalDays) {
         when {
@@ -132,10 +135,13 @@ private fun ProgressContent() {
                 repeat(difference) { dayStates.add(DayStatus.Pending) }
             }
             dayStates.size > totalDays -> {
-                repeat(dayStates.size - totalDays) { dayStates.removeLast() }
+                repeat(dayStates.size - totalDays) {
+                    if (dayStates.isNotEmpty()) dayStates.removeAt(dayStates.lastIndex)
+                }
             }
         }
     }
+
 
     var motivationalMessage by rememberSaveable { mutableStateOf<String?>(null) }
     var showDayPicker by remember { mutableStateOf(false) }
@@ -251,32 +257,43 @@ private fun ProgressContent() {
 private fun ProgressRings(
     modifier: Modifier = Modifier,
     dayStates: List<DayStatus>,
-    ringSpacing: Dp = 6.dp
+    daysPerRing: Int = DAYS_PER_WEEK,
+    ringSpacing: Dp = 8.dp
 ) {
-    val totalRings = dayStates.size
+    val totalRings = (dayStates.size + daysPerRing - 1) / daysPerRing
     val density = LocalDensity.current
     Canvas(modifier = modifier) {
         if (totalRings == 0) return@Canvas
         val minDimension = size.minDimension
-        val maxRadius = minDimension / 2f
-        val defaultSpacingPx = with(density) { ringSpacing.toPx() }
-        val spacingPx = if (totalRings > 1) {
-            val maxAllowedSpacing = maxRadius / totalRings
-            minOf(defaultSpacingPx, maxAllowedSpacing)
-        } else {
-            0f
-        }
+        val spacingPx = with(density) { ringSpacing.toPx() }
+        val maxRadius = minDimension / 2
         val totalSpacing = spacingPx * (totalRings - 1)
         val ringWidth = (maxRadius - totalSpacing) / totalRings
-        val stroke = Stroke(width = ringWidth)
-        val baseRadius = ringWidth / 2f
-        dayStates.forEachIndexed { index, status ->
-            val radius = baseRadius + index * (ringWidth + spacingPx)
-            drawCircle(
-                color = status.displayColor,
-                radius = radius,
-                style = stroke
-            )
+        val center = this.center
+        var dayIndex = 0
+        repeat(totalRings) { ring ->
+            val segments = minOf(daysPerRing, dayStates.size - dayIndex)
+            val outerRadius = ringWidth * (ring + 1) + spacingPx * ring
+            val stroke = Stroke(width = ringWidth, cap = StrokeCap.Round)
+            val sweepPerSegment = 360f / segments
+            val gapAngle = minOf(12f, sweepPerSegment * 0.25f)
+            val startAngle = -90f
+            for (segment in 0 until segments) {
+                val status = dayStates[dayIndex]
+                val sweep = sweepPerSegment - gapAngle
+                val radius = outerRadius
+                val diameter = radius * 2
+                drawArc(
+                    color = status.displayColor,
+                    startAngle = startAngle + segment * sweepPerSegment + gapAngle / 2f,
+                    sweepAngle = sweep,
+                    useCenter = false,
+                    topLeft = Offset(center.x - radius, center.y - radius),
+                    size = Size(diameter, diameter),
+                    style = stroke
+                )
+                dayIndex++
+            }
         }
     }
 }
