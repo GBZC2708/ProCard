@@ -5,7 +5,7 @@
         android:icon="@mipmap/ic_launcher"
         android:label="Pro Card"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Procard">
+        android:theme="@style/Theme.ProCard">
 
 
         <activity
