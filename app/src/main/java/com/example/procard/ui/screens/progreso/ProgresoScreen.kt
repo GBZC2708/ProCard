@@ -59,6 +59,10 @@ import com.example.procard.navigation.NavRoute
 import com.example.procard.ui.components.AppHeader
 import com.example.procard.ui.components.ErrorBanner
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.toMutableStateList
+
 
 private enum class DayStatus(val displayColor: Color, val message: String) {
     Excellent(Color(0xFF43A047), "¡Excelente día!"),
@@ -111,22 +115,18 @@ private fun ProgressContent() {
     var selectedWeeks by rememberSaveable { mutableStateOf(4) }
     val totalDays = selectedWeeks * DAYS_PER_WEEK
 
-    val saver = remember {
-        Saver(
-            save = { stateList -> stateList.map(DayStatus::ordinal) },
-            restore = { values ->
-                mutableStateListOf<DayStatus>().apply {
-                    values.mapTo(this) { DayStatus.values()[it] }
-                }
-            }
+// Lista de estados por día, persistente con rememberSaveable
+    val dayStates: SnapshotStateList<DayStatus> = rememberSaveable(
+        // Guardamos como lista de enteros (ordinales) y restauramos a SnapshotStateList
+        saver = listSaver(
+            save = { list -> list.map(DayStatus::ordinal) },
+            restore = { ords -> ords.map { DayStatus.values()[it] }.toMutableStateList() }
         )
+    ) {
+        // Al iniciar: todas las coronas en ROJO (Pending)
+        List(totalDays) { DayStatus.Pending }.toMutableStateList()
     }
 
-    val dayStates = rememberSaveable(stateSaver = saver) {
-        mutableStateListOf<DayStatus>().apply {
-            repeat(totalDays) { add(DayStatus.Pending) }
-        }
-    }
 
     LaunchedEffect(totalDays) {
         when {
@@ -135,10 +135,13 @@ private fun ProgressContent() {
                 repeat(difference) { dayStates.add(DayStatus.Pending) }
             }
             dayStates.size > totalDays -> {
-                repeat(dayStates.size - totalDays) { dayStates.removeLast() }
+                repeat(dayStates.size - totalDays) {
+                    if (dayStates.isNotEmpty()) dayStates.removeAt(dayStates.lastIndex)
+                }
             }
         }
     }
+
 
     var motivationalMessage by rememberSaveable { mutableStateOf<String?>(null) }
     var showDayPicker by remember { mutableStateOf(false) }
