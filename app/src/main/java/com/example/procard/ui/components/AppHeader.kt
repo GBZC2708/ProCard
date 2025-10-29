@@ -8,6 +8,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.DarkMode
+import androidx.compose.material.icons.rounded.LightMode
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -24,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.procard.R
 import com.example.procard.model.UserProfile
+import com.example.procard.ui.theme.LocalThemeController
 
 @Composable
 fun AppHeader(
@@ -32,6 +38,8 @@ fun AppHeader(
     subtitle: String,
     modifier: Modifier = Modifier
 ) {
+    val themeController = LocalThemeController.current
+
     Surface(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
@@ -73,6 +81,17 @@ fun AppHeader(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
+            }
+            Spacer(Modifier.width(12.dp))
+            val isDarkTheme = themeController.isDarkTheme
+            val icon = if (isDarkTheme) Icons.Rounded.DarkMode else Icons.Rounded.LightMode
+            val description = if (isDarkTheme) {
+                "Cambiar a modo claro"
+            } else {
+                "Cambiar a modo oscuro"
+            }
+            IconButton(onClick = themeController.toggleTheme) {
+                Icon(imageVector = icon, contentDescription = description)
             }
         }
     }
