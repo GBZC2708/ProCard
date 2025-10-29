@@ -1,67 +1,101 @@
+/*
+ * Screen "Progreso": muestra el resumen diario, selector de etapa y control de peso,
+ * un historial gráfico de los últimos siete días, el tablero circular de 28 coronas
+ * (hoy en el centro) y herramientas de edición rápida por calendario, incluyendo notas.
+ * Persistimos etapa, peso, color y nota de cada día con DataStore para que otros
+ * módulos puedan reutilizar la información sin depender de esta UI.
+ */
 package com.example.procard.ui.screens.progreso
 
+import android.graphics.Paint
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ChevronLeft
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DisplayMode
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.rememberSnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.listSaver
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshots.SnapshotStateList
-import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.text.input.KeyboardOptions
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.window.Dialog
+import com.example.procard.data.ProgressRepository
 import com.example.procard.di.ServiceLocator
+import com.example.procard.model.DayColor
+import com.example.procard.model.ProgressSnapshot
+import com.example.procard.model.ProgressStage
 import com.example.procard.model.ScreenState
 import com.example.procard.model.UserProfile
 import com.example.procard.navigation.NavRoute
@@ -69,611 +103,657 @@ import com.example.procard.ui.components.AppHeader
 import com.example.procard.ui.components.ErrorBanner
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Date
+import java.time.LocalDate
+import java.time.YearMonth
+import java.time.format.DateTimeFormatter
 import java.util.Locale
-import kotlin.math.max
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.min
+import kotlin.math.roundToInt
+import kotlin.math.sin
 
-// ------------------------------------------------------------
-// Estados de día
-// ------------------------------------------------------------
-private enum class DayStatus(val displayColor: Color, val message: String) {
-    Excellent(Color(0xFF43A047), "¡Excelente día!"),
-    Average(Color(0xFFFFC107), "Podría ser mejor."),
-    Pending(Color(0xFFD32F2F), "No te rindas, mañana será mejor.")
-}
-
-// ------------------------------------------------------------
-// Parámetros generales
-// ------------------------------------------------------------
-private val weekOptions = listOf(2, 4, 6, 8, 12) // 2,4,6,8,12 semanas
-private const val DAYS_PER_WEEK = 7
-private const val ONE_DAY_MS = 24L * 60 * 60 * 1000
-
-// ------------------------------------------------------------
-// Pantalla pública
-// ------------------------------------------------------------
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProgresoScreen() {
-    val repo = ServiceLocator.userRepository
+    val context = LocalContext.current
+    val progressRepository = remember { ServiceLocator.progressRepository(context) }
+    val snapshot by progressRepository.observe().collectAsState(initial = ProgressSnapshot())
+
+    val userRepo = remember { ServiceLocator.userRepository }
     var user by remember { mutableStateOf<UserProfile?>(null) }
-    var state by remember { mutableStateOf(ScreenState(loading = true)) }
+    var screenState by remember { mutableStateOf(ScreenState(loading = true)) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         scope.launch {
             try {
-                user = repo.fetchUser()
-                state = ScreenState(loading = false, empty = true)
+                user = userRepo.fetchUser()
+                screenState = ScreenState(loading = false)
             } catch (e: Exception) {
-                state = ScreenState(loading = false, error = e.message ?: "Error desconocido")
+                screenState = ScreenState(loading = false, error = e.message ?: "Error desconocido")
             }
         }
     }
 
-    Column(Modifier.fillMaxSize()) {
-        AppHeader(
-            user = user ?: UserProfile("u-0", "", null),
-            title = NavRoute.Progreso.title,
-            subtitle = NavRoute.Progreso.subtitle
-        )
+    val snackbarHostState = rememberSnackbarHostState()
 
-        if (state.loading) {
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-        }
+    Scaffold(
+        topBar = {
+            AppHeader(
+                user = user ?: UserProfile("u-0", "", null),
+                title = NavRoute.Progreso.title,
+                subtitle = NavRoute.Progreso.subtitle
+            )
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            if (screenState.loading) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
 
-        state.error?.let { msg ->
-            ErrorBanner(
-                message = msg,
-                onRetry = {
-                    state = state.copy(loading = true, error = null)
-                    scope.launch {
-                        try {
-                            user = repo.fetchUser()
-                            state = ScreenState(loading = false, empty = true)
-                        } catch (e: Exception) {
-                            state = ScreenState(
-                                loading = false,
-                                error = e.message ?: "Error desconocido"
-                            )
+            screenState.error?.let { message ->
+                ErrorBanner(
+                    message = message,
+                    onRetry = {
+                        screenState = ScreenState(loading = true)
+                        scope.launch {
+                            try {
+                                user = userRepo.fetchUser()
+                                screenState = ScreenState(loading = false)
+                            } catch (e: Exception) {
+                                screenState = ScreenState(loading = false, error = e.message ?: "Error desconocido")
+                            }
                         }
                     }
-                }
-            )
-        }
+                )
+            }
 
-        if (!state.loading) {
-            ProgressContent()
+            ProgressContent(
+                snapshot = snapshot,
+                repository = progressRepository,
+                snackbarHostState = snackbarHostState,
+                modifier = Modifier.weight(1f, fill = true)
+            )
         }
     }
 }
 
-// ------------------------------------------------------------
-// Contenido principal
-// ------------------------------------------------------------
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-private fun ProgressContent() {
-    val scroll = rememberScrollState()
+private fun ProgressContent(
+    snapshot: ProgressSnapshot,
+    repository: ProgressRepository,
+    snackbarHostState: SnackbarHostState,
+    modifier: Modifier = Modifier
+) {
+    val scrollState = rememberScrollState()
+    val haptics = LocalHapticFeedback.current
+    val isDark = isSystemInDarkTheme()
+    val scope = rememberCoroutineScope()
 
-    // ——— Mensaje resumen del screen ———
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Text(
-            "Progreso diario con coronas concéntricas: HOY es el anillo central. " +
-                    "Edita el color de cada día (verde/amarillo/rojo), observa tus conteos y mantén la vista centrada en HOY. " +
-                    "Usa “Configurar objetivo” para definir semanas e inicio y reiniciar el seguimiento.",
-            modifier = Modifier.padding(12.dp),
-            style = MaterialTheme.typography.bodyMedium
-        )
-    }
-
-    Spacer(Modifier.height(8.dp))
-
-    var selectedWeeks by rememberSaveable { mutableIntStateOf(4) }
-    val totalDays by remember { derivedStateOf { selectedWeeks * DAYS_PER_WEEK } }
-    val centerIndex by remember { derivedStateOf { totalDays / 2 } }
-
-    // Pizarra: color persistido con rememberSaveable (puedes migrar a DataStore)
-    val defaultBoard = BoardColor.Green
-    var boardColorKey by rememberSaveable { mutableStateOf(defaultBoard.key) }
-    val boardColor = BoardColor.fromKey(boardColorKey)
-
-    // “Objetivo” (configuración del usuario). Informativo y resetea al confirmar.
-    var objectiveStart by rememberSaveable { mutableLongStateOf(System.currentTimeMillis().atStartOfDay()) }
-
-    // “Hoy” con auto-actualización cuando cambie el día del sistema
-    var todayStart by remember { mutableLongStateOf(System.currentTimeMillis().atStartOfDay()) }
+    var today by remember { mutableStateOf(LocalDate.now()) }
     LaunchedEffect(Unit) {
         while (true) {
             delay(60_000)
-            val now = System.currentTimeMillis().atStartOfDay()
-            if (now != todayStart) todayStart = now
+            val now = LocalDate.now()
+            if (now != today) {
+                today = now
+            }
         }
     }
 
-    // Ventana visual: SIEMPRE centrada en HOY
-    val startDateVisible by remember(todayStart, totalDays) {
-        mutableLongStateOf(todayStart - centerIndex * ONE_DAY_MS)
-    }
-    val endDateVisible by remember(totalDays, startDateVisible) {
-        mutableLongStateOf(startDateVisible + (totalDays - 1) * ONE_DAY_MS)
-    }
+    var calendarMonth by remember(today) { mutableStateOf(YearMonth.from(today)) }
+    var showCalendar by remember { mutableStateOf(false) }
+    var editorDate by remember { mutableStateOf<LocalDate?>(null) }
 
-    // Formateadores
-    val fmt = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()) }
-    val fmtWeekday = remember { SimpleDateFormat("EEEE dd/MM/yyyy", Locale.getDefault()) }
+    val dateFormatter = remember { DateTimeFormatter.ofPattern("EEEE d 'de' MMMM 'de' yyyy", Locale("es", "ES")) }
 
-    // Reset token para reiniciar los datos cuando se confirma configuración
-    var resetCounter by rememberSaveable { mutableIntStateOf(0) }
-
-    // Estados de días persistentes (se resetean cuando cambia resetCounter)
-    val dayStates: SnapshotStateList<DayStatus> = rememberSaveable(resetCounter,
-        saver = listSaver(
-            save = { list -> list.map(DayStatus::ordinal) },
-            restore = { ords -> ords.map { DayStatus.values()[it] }.toMutableStateList() }
-        )
-    ) {
-        List(totalDays) { DayStatus.Pending }.toMutableStateList()
+    val formattedToday = remember(today) {
+        dateFormatter.format(today).replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale("es", "ES")) else it.toString() }
     }
 
-    // Ajustar tamaño al cambiar semanas
-    LaunchedEffect(totalDays) {
-        when {
-            dayStates.size < totalDays -> repeat(totalDays - dayStates.size) { dayStates.add(DayStatus.Pending) }
-            dayStates.size > totalDays -> repeat(dayStates.size - totalDays) { dayStates.removeAt(dayStates.lastIndex) }
+    var weightInput by remember { mutableStateOf("") }
+    var weightError by remember { mutableStateOf<String?>(null) }
+    var showWeightCheck by remember { mutableStateOf(false) }
+
+    LaunchedEffect(today, snapshot.weights[today]) {
+        weightInput = snapshot.weights[today]?.let { String.format(Locale("es", "ES"), "%.2f", it) } ?: ""
+    }
+
+    LaunchedEffect(showWeightCheck) {
+        if (showWeightCheck) {
+            delay(1800)
+            showWeightCheck = false
         }
     }
 
-    // Conteos
-    val greenCount by remember { derivedStateOf { dayStates.count { it == DayStatus.Excellent } } }
-    val yellowCount by remember { derivedStateOf { dayStates.count { it == DayStatus.Average } } }
-    val redCount by remember { derivedStateOf { dayStates.count { it == DayStatus.Pending } } }
-
-    // Diálogos
-    var showConfigDialog by remember { mutableStateOf(false) }  // Configurar objetivo
-    var showDayDialog by remember { mutableStateOf(false) }     // Elegir color
-    var showEditDialog by remember { mutableStateOf(false) }    // Elegir día a editar
-    var selectedDayIndex by remember { mutableIntStateOf(centerIndex) }
-
-    // UI principal (scrollable)
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
-            .verticalScroll(scroll)
+            .verticalScroll(scrollState)
             .padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-
-        // ——— Fila superior: Configurar objetivo + color pizarra ———
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Button(
-                onClick = { showConfigDialog = true },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C4DFF))
-            ) { Text("Configurar objetivo") }
-
-            BoardColorSelector(
-                selected = boardColorKey,
-                onChange = { boardColorKey = it }
-            )
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        // ——— Fechas / Hoy ———
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column {
-                Text("Ventana (centrada en HOY)", fontWeight = FontWeight.SemiBold)
-                Text("Inicio: ${fmt.format(Date(startDateVisible))}")
-                Text("Fin: ${fmt.format(Date(endDateVisible))}")
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                Text("Objetivo", fontWeight = FontWeight.SemiBold)
-                val endObjective = objectiveStart + (totalDays - 1) * ONE_DAY_MS
-                Text("Inicio: ${fmt.format(Date(objectiveStart))}")
-                Text("Fin: ${fmt.format(Date(endObjective))}")
+        Surface(shape = RoundedCornerShape(16.dp), tonalElevation = 2.dp) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(text = formattedToday, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                StageSelector(current = snapshot.stage) { stage ->
+                    scope.launch {
+                        repository.setStage(stage)
+                        haptics?.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                    }
+                }
             }
         }
 
-        Spacer(Modifier.height(8.dp))
-
-        // ——— Hoy (día de semana + fecha) ———
-        Surface(
-            color = MaterialTheme.colorScheme.secondaryContainer,
-            shape = RoundedCornerShape(10.dp)
-        ) {
-            Text(
-                "Hoy: ${fmtWeekday.format(Date(todayStart)).replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }}",
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium
-            )
-        }
-
-        Spacer(Modifier.height(12.dp))
-
-        // ——— Editar días (antes de la pizarra) ———
-        OutlinedButton(onClick = { showEditDialog = true }) { Text("Editar días") }
-
-        Spacer(Modifier.height(12.dp))
-
-        // ——— Pizarra + círculo máximo posible ———
-        BoxWithConstraints(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp)
-        ) {
-            val boardPadding = 16.dp
-            val shape = RoundedCornerShape(16.dp)
-            val squareSide = if (maxWidth < maxHeight) maxWidth else maxHeight
-            val diameterDp = squareSide - (boardPadding * 2)
-
-            Surface(
-                color = boardColor.color,
-                shape = shape,
-                tonalElevation = 0.dp,
-                shadowElevation = 0.dp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(4.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .padding(boardPadding)
-                        .size(diameterDp)
-                        .background(Color.Transparent),
-                    contentAlignment = Alignment.Center
+        Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Peso de hoy", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                OutlinedTextField(
+                    value = weightInput,
+                    onValueChange = { newValue ->
+                        weightInput = newValue.filter { it.isDigit() || it == '.' || it == ',' }.replace(',', '.')
+                    },
+                    label = { Text("Peso de hoy") },
+                    placeholder = { Text("no hay registro de hoy") },
+                    keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
+                    isError = weightError != null,
+                    supportingText = {
+                        val msg = weightError ?: "Rango válido: 30.00 kg - 300.00 kg"
+                        Text(msg)
+                    }
+                )
+                Button(
+                    onClick = {
+                        val sanitized = weightInput.trim()
+                        val number = sanitized.toDoubleOrNull()
+                        val regex = Regex("^\\d{2,3}(\\.\\d{1,2})?$")
+                        when {
+                            sanitized.isEmpty() -> weightError = "Ingresa un peso válido"
+                            !regex.matches(sanitized) -> weightError = "Usa dos decimales (ej. 72.30)"
+                            number == null || number !in 30.0..300.0 -> weightError = "Debe estar entre 30.00 y 300.00 kg"
+                            else -> {
+                                weightError = null
+                                scope.launch {
+                                    val rounded = (number * 100).roundToInt() / 100.0
+                                    repository.updateWeight(today, rounded)
+                                    snackbarHostState.showSnackbar("Peso guardado correctamente")
+                                }
+                                haptics?.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                showWeightCheck = true
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                 ) {
-                    ProgressRings(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .aspectRatio(1f),
-                        dayStates = dayStates,
-                        startDate = startDateVisible,
-                        today = todayStart,
-                        ringSpacing = 0.dp,
-                        minRingThickness = 4.dp,
-                        overlapPx = 3f
+                    Text("Guardar peso")
+                }
+                AnimatedVisibility(visible = showWeightCheck, enter = fadeIn() + scaleIn(), exit = fadeOut() + scaleOut()) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(imageVector = Icons.Rounded.CheckCircle, contentDescription = null, tint = Color(0xFF4CAF50))
+                        Text("Peso guardado correctamente", color = Color(0xFF4CAF50), fontWeight = FontWeight.Medium)
+                    }
+                }
+                val history = remember(snapshot.weights, today) { buildWeightHistory(snapshot.weights, today) }
+                WeightHistoryChart(entries = history, isDark = isDark)
+            }
+        }
+
+        Surface(shape = RoundedCornerShape(16.dp), tonalElevation = 2.dp) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Progreso de 28 días", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                CrownRing(
+                    today = today,
+                    snapshot = snapshot,
+                    isDark = isDark,
+                    onDaySelected = { date ->
+                        haptics?.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                        editorDate = date
+                    }
+                )
+                Button(onClick = { editorDate = today }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) {
+                    Text("Hoy")
+                }
+                val todayStatus = snapshot.dayStatuses[today] ?: DayColor.ROJO
+                val todayLabel = when (todayStatus) {
+                    DayColor.ROJO -> "sin registro hoy"
+                    DayColor.AMARILLO -> "progreso parcial registrado"
+                    DayColor.VERDE -> "día cumplido"
+                }
+                Text(todayLabel, style = MaterialTheme.typography.bodyMedium)
+                OutlinedButton(onClick = { showCalendar = true }) {
+                    Text("Editar días")
+                }
+            }
+        }
+
+        if (snapshot.notes.isEmpty() && snapshot.dayStatuses.isEmpty() && snapshot.weights.isEmpty()) {
+            Surface(shape = RoundedCornerShape(16.dp), tonalElevation = 1.dp) {
+                Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Aún no tienes registros", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text("¡Empieza hoy! Registra tu primer peso 💪", textAlign = TextAlign.Center)
+                }
+            }
+        }
+    }
+
+    if (showCalendar) {
+        CalendarDialog(
+            month = calendarMonth,
+            today = today,
+            snapshot = snapshot,
+            isDark = isDark,
+            onDismiss = { showCalendar = false },
+            onMonthChange = { calendarMonth = it },
+            onDaySelected = { date ->
+                showCalendar = false
+                editorDate = date
+            }
+        )
+    }
+
+    editorDate?.let { date ->
+        DayEditorDialog(
+            date = date,
+            initialStatus = snapshot.dayStatuses[date] ?: DayColor.ROJO,
+            initialNote = snapshot.notes[date] ?: "",
+            onDismiss = { editorDate = null },
+            onSave = { status, note ->
+                scope.launch {
+                    repository.updateDayStatus(date, status)
+                    repository.updateNote(date, note)
+                    snackbarHostState.showSnackbar("Nota guardada")
+                }
+                haptics?.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                editorDate = null
+            }
+        )
+    }
+}
+
+@Composable
+private fun StageSelector(current: ProgressStage, onStageSelected: (ProgressStage) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+        OutlinedTextField(
+            value = current.label,
+            onValueChange = {},
+            readOnly = true,
+            modifier = Modifier
+                .menuAnchor()
+                .fillMaxWidth(),
+            label = { Text("Etapa") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) }
+        )
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            ProgressStage.entries.forEach { stage ->
+                DropdownMenuItem(
+                    text = { Text(stage.label) },
+                    onClick = {
+                        expanded = false
+                        onStageSelected(stage)
+                    }
+                )
+            }
+        }
+    }
+}
+
+private fun buildWeightHistory(weights: Map<LocalDate, Double>, today: LocalDate): List<Pair<LocalDate, Double>> {
+    return (1..7).map { offset -> today.minusDays(offset.toLong()) }
+        .mapNotNull { date -> weights[date]?.let { date to it } }
+}
+
+@Composable
+private fun WeightHistoryChart(entries: List<Pair<LocalDate, Double>>, isDark: Boolean) {
+    if (entries.isEmpty()) {
+        Surface(shape = RoundedCornerShape(12.dp), tonalElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = "¡Empieza hoy! Registra tu primer peso 💪",
+                modifier = Modifier.padding(16.dp),
+                textAlign = TextAlign.Center
+            )
+        }
+        return
+    }
+
+    val density = LocalDensity.current
+    val labelPaint = remember(isDark, density) {
+        Paint().apply {
+            color = if (isDark) android.graphics.Color.WHITE else android.graphics.Color.DKGRAY
+            textAlign = Paint.Align.CENTER
+            textSize = with(density) { 12.sp.toPx() }
+        }
+    }
+
+    val minWeight = entries.minOf { it.second }
+    val maxWeight = entries.maxOf { it.second }
+    val diff = (maxWeight - minWeight).coerceAtLeast(1.0)
+    val reveal = remember { Animatable(0f) }
+    LaunchedEffect(entries) {
+        reveal.snapTo(0f)
+        reveal.animateTo(1f, tween(durationMillis = 480, easing = FastOutSlowInEasing))
+    }
+
+    Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+        Box(modifier = Modifier
+            .fillMaxWidth()
+            .height(200.dp)
+            .padding(12.dp)) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                labelPaint.alpha = (255 * reveal.value.coerceIn(0f, 1f)).toInt()
+                val widthStep = size.width / (entries.size - 1).coerceAtLeast(1)
+                val points = entries.mapIndexed { index, pair ->
+                    val normalized = (pair.second - minWeight) / diff
+                    val x = widthStep * index
+                    val y = size.height - (size.height * normalized).toFloat()
+                    x to y
+                }
+
+                val axisColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                drawLine(color = axisColor, start = androidx.compose.ui.geometry.Offset(0f, size.height), end = androidx.compose.ui.geometry.Offset(size.width, size.height))
+                drawLine(color = axisColor, start = androidx.compose.ui.geometry.Offset(0f, 0f), end = androidx.compose.ui.geometry.Offset(0f, size.height))
+
+                val lineColor = MaterialTheme.colorScheme.primary.copy(alpha = reveal.value)
+                for (i in 0 until points.lastIndex) {
+                    val start = points[i]
+                    val end = points[i + 1]
+                    drawLine(
+                        color = lineColor,
+                        start = androidx.compose.ui.geometry.Offset(start.first, start.second),
+                        end = androidx.compose.ui.geometry.Offset(end.first, end.second),
+                        strokeWidth = 6f * reveal.value.coerceAtLeast(0.2f),
+                        cap = StrokeCap.Round
+                    )
+                }
+
+                points.forEachIndexed { index, point ->
+                    drawCircle(
+                        color = MaterialTheme.colorScheme.secondary.copy(alpha = reveal.value),
+                        radius = 12f * reveal.value.coerceAtLeast(0.3f),
+                        center = androidx.compose.ui.geometry.Offset(point.first, point.second)
+                    )
+                    drawContext.canvas.nativeCanvas.drawText(
+                        String.format(Locale("es", "ES"), "%.1f", entries[index].second),
+                        point.first,
+                        (point.second - 24f).coerceAtLeast(20f),
+                        labelPaint
+                    )
+                    val label = entries[index].first.dayOfWeek.displayName(java.time.format.TextStyle.SHORT, Locale("es", "ES")).take(3)
+                    drawContext.canvas.nativeCanvas.drawText(
+                        label.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale("es", "ES")) else it.toString() },
+                        point.first,
+                        size.height + 24f,
+                        labelPaint
                     )
                 }
             }
         }
-
-        Spacer(Modifier.height(16.dp))
-
-        // ——— Botón HOY ———
-        Button(
-            onClick = { selectedDayIndex = centerIndex; showDayDialog = true },
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C4DFF))
-        ) { Text("HOY") }
-
-        // ——— Mensaje motivacional del centro ———
-        Spacer(Modifier.height(12.dp))
-        val todayMsg = dayStates.getOrNull(centerIndex)?.message
-        if (!todayMsg.isNullOrBlank()) {
-            Surface(
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text(
-                    todayMsg,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                    style = MaterialTheme.typography.bodyLarge
-                )
-            }
-        }
-
-        // ——— Conteos ———
-        Spacer(Modifier.height(16.dp))
-        Row(
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            CountBadge("Verdes", greenCount, DayStatus.Excellent.displayColor)
-            CountBadge("Amarillos", yellowCount, DayStatus.Average.displayColor)
-            CountBadge("Rojos", redCount, DayStatus.Pending.displayColor)
-        }
-
-        Spacer(Modifier.height(24.dp))
-    }
-
-    // ------------- Diálogo: Configurar objetivo (resetea todo) -------------
-    if (showConfigDialog) {
-        var tempWeeks by remember { mutableIntStateOf(selectedWeeks) }
-        var tempStart by remember { mutableLongStateOf(objectiveStart) }
-        var weeksMenuExpanded by remember { mutableStateOf(false) }
-        // HOIST dpState PARA USARLO EN TEXT Y EN CONFIRM BUTTON
-        val dpState = rememberDatePickerState(
-            initialDisplayMode = DisplayMode.Picker,
-            initialSelectedDateMillis = tempStart
-        )
-
-        AlertDialog(
-            onDismissRequest = { showConfigDialog = false },
-            title = { Text("Configurar objetivo") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    // selector semanas
-                    ExposedDropdownMenuBox(
-                        expanded = weeksMenuExpanded,
-                        onExpandedChange = { weeksMenuExpanded = !weeksMenuExpanded }
-                    ) {
-                        OutlinedTextField(
-                            value = "$tempWeeks semanas = ${tempWeeks * DAYS_PER_WEEK} días",
-                            onValueChange = {},
-                            readOnly = true,
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(weeksMenuExpanded) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .menuAnchor()
-                        )
-                        DropdownMenu(
-                            expanded = weeksMenuExpanded,
-                            onDismissRequest = { weeksMenuExpanded = false }
-                        ) {
-                            weekOptions.forEach { opt ->
-                                DropdownMenuItem(
-                                    text = { Text("$opt semanas") },
-                                    onClick = {
-                                        tempWeeks = opt
-                                        weeksMenuExpanded = false
-                                    }
-                                )
-                            }
-                        }
-                    }
-
-                    // datepicker (usa dpState hoisted)
-                    DatePicker(state = dpState, showModeToggle = true)
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    // aplicar y resetear
-                    selectedWeeks = tempWeeks
-                    val pickedFromDp = dpState.selectedDateMillis ?: tempStart
-                    objectiveStart = pickedFromDp.atStartOfDay()
-                    tempStart = objectiveStart
-
-                    // reset de datos
-                    resetCounter++  // esto recrea dayStates -> todo rojo
-                    showConfigDialog = false
-                }) { Text("Confirmar") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showConfigDialog = false }) { Text("Cancelar") }
-            }
-        )
-    }
-
-    // ------------- Diálogo: Elegir color de un día -------------
-    if (showDayDialog) {
-        AlertDialog(
-            onDismissRequest = { showDayDialog = false },
-            title = { Text("Selecciona cómo estuvo tu día") },
-            text = {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    DayStatus.values().forEach { st ->
-                        Button(
-                            onClick = {
-                                if (selectedDayIndex in 0 until totalDays) {
-                                    dayStates[selectedDayIndex] = st
-                                }
-                                showDayDialog = false
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = st.displayColor)
-                        ) { Text(st.name) }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { showDayDialog = false }) { Text("Cerrar") } }
-        )
-    }
-
-    // ------------- Diálogo: Elegir qué día editar -------------
-    if (showEditDialog) {
-        EditDaysDialog(
-            dayStates = dayStates,
-            onDismiss = { showEditDialog = false },
-            onDaySelected = { idx ->
-                selectedDayIndex = idx
-                showDayDialog = true
-            }
-        )
-    }
-}
-
-// ------------------------------------------------------------
-// Pizarra: selector de color
-// ------------------------------------------------------------
-private enum class BoardColor(val key: String, val color: Color) {
-    Green("green", Color(0xFF103C2F)), // verde pizarra oscuro
-    Black("black", Color(0xFF121212)),
-    Navy("navy", Color(0xFF0E1A2B));
-
-    companion object {
-        fun fromKey(k: String): BoardColor =
-            values().firstOrNull { it.key == k } ?: Green
     }
 }
 
 @Composable
-private fun BoardColorSelector(selected: String, onChange: (String) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text("Pizarra:", style = MaterialTheme.typography.labelLarge)
-        BoardColor.values().forEach { opt ->
-            Box(
-                modifier = Modifier
-                    .size(28.dp)
-                    .clip(CircleShape)
-                    .background(opt.color)
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() }
-                    ) { onChange(opt.key) }
+private fun CrownRing(
+    today: LocalDate,
+    snapshot: ProgressSnapshot,
+    isDark: Boolean,
+    onDaySelected: (LocalDate) -> Unit
+) {
+    val outerDays = remember(today) { (1..27).map { today.minusDays(it.toLong()) }.reversed() }
+    val pulse = remember { Animatable(1f) }
+    LaunchedEffect(snapshot.dayStatuses) {
+        pulse.snapTo(0.92f)
+        pulse.animateTo(1f, animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing))
+    }
+
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(1f)
+    ) {
+        val sizePx = with(LocalDensity.current) { min(maxWidth, maxHeight).toPx() }
+        val crownSize = with(LocalDensity.current) { 38.dp.toPx() }
+        val radius = (sizePx / 2f) - (crownSize / 2f)
+
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            outerDays.forEachIndexed { index, date ->
+                val angle = (index / outerDays.size.toFloat()) * 2 * PI - PI / 2
+                val x = (cos(angle) * radius * pulse.value).toFloat()
+                val y = (sin(angle) * radius * pulse.value).toFloat()
+                CrownDot(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .offset { IntOffset(x.roundToInt(), y.roundToInt()) },
+                    color = (snapshot.dayStatuses[date] ?: DayColor.ROJO).resolveColor(isDark),
+                    isToday = false,
+                    hasNote = snapshot.notes.containsKey(date),
+                    onClick = { onDaySelected(date) }
+                )
+            }
+
+            CrownDot(
+                modifier = Modifier.align(Alignment.Center),
+                color = (snapshot.dayStatuses[today] ?: DayColor.ROJO).resolveColor(isDark),
+                isToday = true,
+                hasNote = snapshot.notes.containsKey(today),
+                onClick = { onDaySelected(today) }
             )
         }
     }
 }
 
-// ------------------------------------------------------------
-// Diálogo: Editar cualquier día (rejilla simple)
-// ------------------------------------------------------------
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun EditDaysDialog(
-    dayStates: List<DayStatus>,
+private fun CrownDot(modifier: Modifier, color: Color, isToday: Boolean, hasNote: Boolean, onClick: () -> Unit) {
+    val animatedColor by androidx.compose.animation.animateColorAsState(targetValue = color, label = "crownColor")
+    Box(
+        modifier = modifier
+            .size(if (isToday) 64.dp else 40.dp)
+            .clip(CircleShape)
+            .background(animatedColor)
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(if (isToday) "HOY" else "👑", color = Color.White, fontWeight = FontWeight.Bold, fontSize = if (isToday) 16.sp else 14.sp)
+        if (hasNote) {
+            Text(
+                text = "📝",
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = (-6).dp, y = 6.dp),
+                fontSize = 12.sp
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun CalendarDialog(
+    month: YearMonth,
+    today: LocalDate,
+    snapshot: ProgressSnapshot,
+    isDark: Boolean,
     onDismiss: () -> Unit,
-    onDaySelected: (Int) -> Unit
+    onMonthChange: (YearMonth) -> Unit,
+    onDaySelected: (LocalDate) -> Unit
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Editar días") },
-        text = {
-            Column {
-                Text("Toca un día para actualizar su color")
-                Spacer(Modifier.height(8.dp))
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    dayStates.forEachIndexed { i, status ->
-                        Box(
-                            modifier = Modifier
-                                .size(28.dp)
-                                .clip(CircleShape)
-                                .background(status.displayColor)
-                                .clickable { onDaySelected(i) }
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 6.dp) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                    IconButton(onClick = { onMonthChange(month.minusMonths(1)) }) { Icon(imageVector = Icons.Rounded.ChevronLeft, contentDescription = "Mes anterior") }
+                    Text(
+                        text = month.displayName(),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    IconButton(onClick = { onMonthChange(month.plusMonths(1)) }) { Icon(imageVector = Icons.Rounded.ChevronRight, contentDescription = "Mes siguiente") }
+                }
+
+                val headers = listOf("L", "M", "X", "J", "V", "S", "D")
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    headers.forEach { day ->
+                        Text(day, modifier = Modifier.weight(1f), textAlign = TextAlign.Center, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+
+                val firstDayOfMonth = month.atDay(1)
+                val daysInMonth = month.lengthOfMonth()
+                val offset = ((firstDayOfMonth.dayOfWeek.value + 6) % 7) // Monday first
+                LazyVerticalGrid(columns = GridCells.Fixed(7), userScrollEnabled = false, modifier = Modifier.heightIn(max = 360.dp)) {
+                    items(offset) {
+                        Box(modifier = Modifier
+                            .padding(4.dp)
+                            .aspectRatio(1f)) {}
+                    }
+                    items(daysInMonth) { index ->
+                        val date = month.atDay(index + 1)
+                        val enabled = !date.isAfter(today)
+                        val statusColor = (snapshot.dayStatuses[date] ?: DayColor.ROJO).resolveColor(isDark)
+                        val hasNote = snapshot.notes.containsKey(date)
+                        CalendarCell(
+                            date = date,
+                            color = statusColor,
+                            isToday = date == today,
+                            enabled = enabled,
+                            hasNote = hasNote,
+                            onClick = { if (enabled) onDaySelected(date) }
                         )
                     }
                 }
+
+                Text("Solo puedes editar hasta el día de hoy.", style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text("Cerrar") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CalendarCell(
+    date: LocalDate,
+    color: Color,
+    isToday: Boolean,
+    enabled: Boolean,
+    hasNote: Boolean,
+    onClick: () -> Unit
+) {
+    val displayColor = if (enabled) color else color.copy(alpha = 0.2f)
+    val borderColor = if (isToday) MaterialTheme.colorScheme.onSurface else Color.Transparent
+    Card(
+        modifier = Modifier
+            .padding(4.dp)
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(10.dp))
+            .let { mod -> if (enabled) mod.clickable { onClick() } else mod },
+        colors = CardDefaults.cardColors(containerColor = displayColor),
+        border = if (borderColor == Color.Transparent) null else androidx.compose.foundation.BorderStroke(2.dp, borderColor)
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            Text(text = date.dayOfMonth.toString(), color = Color.White, fontWeight = FontWeight.Bold)
+            if (hasNote) {
+                Text("📝", modifier = Modifier.align(Alignment.TopEnd).padding(4.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun DayEditorDialog(
+    date: LocalDate,
+    initialStatus: DayColor,
+    initialNote: String,
+    onDismiss: () -> Unit,
+    onSave: (DayColor, String?) -> Unit
+) {
+    var selectedStatus by remember { mutableStateOf(initialStatus) }
+    var noteText by remember { mutableStateOf(initialNote) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val formatter = remember { DateTimeFormatter.ofPattern("EEEE d 'de' MMMM", Locale("es", "ES")) }
+    val formatted = remember(date) {
+        formatter.format(date).replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale("es", "ES")) else it.toString() }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Actualiza tu día", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(formatted, style = MaterialTheme.typography.bodyMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DayColor.values().forEach { option ->
+                        val selected = option == selectedStatus
+                        Surface(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .clickable { selectedStatus = option },
+                            color = if (selected) option.resolveColor(isSystemInDarkTheme()).copy(alpha = 0.9f) else MaterialTheme.colorScheme.surfaceContainerLow
+                        ) {
+                            Text(
+                                text = option.toReadableName(),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = noteText,
+                    onValueChange = {
+                        if (it.length <= 100) {
+                            noteText = it
+                            error = null
+                        } else {
+                            error = "Máximo 100 caracteres"
+                        }
+                    },
+                    label = { Text("Nota (opcional)") },
+                    placeholder = { Text("Agregar nota del día") },
+                    supportingText = { Text("${noteText.length}/100") },
+                    isError = error != null,
+                    minLines = 2
+                )
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Cerrar") } }
+        confirmButton = {
+            TextButton(onClick = {
+                if (noteText.length > 100) {
+                    error = "Máximo 100 caracteres"
+                } else {
+                    onSave(selectedStatus, noteText.ifBlank { null })
+                }
+            }) {
+                Text("Guardar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar") }
+        }
     )
 }
 
-// ------------------------------------------------------------
-// Círculo de progreso (anillos concéntricos, sin separación)
-// ------------------------------------------------------------
-@Composable
-private fun ProgressRings(
-    modifier: Modifier = Modifier,
-    dayStates: List<DayStatus>,
-    startDate: Long,
-    today: Long,
-    ringSpacing: Dp = 0.dp,
-    minRingThickness: Dp = 4.dp,
-    overlapPx: Float = 3f
-) {
-    val total = dayStates.size
-    val density = LocalDensity.current
-
-    // ÍNDICE de HOY relativo a startDate
-    val todayIndex = ((today - startDate) / ONE_DAY_MS).toInt().coerceIn(0, max(0, total - 1))
-    val drawOrder = remember(total, todayIndex) {
-        buildList(total) {
-            add(todayIndex)
-            var k = 1
-            while (size < total) {
-                val left = todayIndex - k
-                val right = todayIndex + k
-                if (left >= 0) add(left)
-                if (size < total && right < total) add(right)
-                k++
-            }
-        }
-    }
-
-    // Animación “onda”: cuando cambia cualquier estado, pulsamos sutilmente grosor
-    val pulse = remember { Animatable(1f) }
-    LaunchedEffect(dayStates.toList()) {
-        pulse.snapTo(0.9f)
-        pulse.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing)
-        )
-    }
-
-    Canvas(modifier = modifier) {
-        if (total <= 0) return@Canvas
-
-        val minDim = size.minDimension
-        val maxRadius = minDim / 2f
-        val c = center
-
-        val spacingPx = with(density) { ringSpacing.toPx() }
-        val minRingPx = with(density) { minRingThickness.toPx() }
-        val totalSpacing = spacingPx * (total - 1).coerceAtLeast(0)
-        val requiredRadius = total * minRingPx + totalSpacing
-        val scale = (maxRadius / requiredRadius).coerceAtMost(1f)
-        val ringW = (minRingPx * scale * pulse.value).coerceAtLeast(0.8f)
-
-        // Dibujar del centro hacia afuera
-        drawOrder.forEachIndexed { radialLayer, dayIndex ->
-            val color = dayStates[dayIndex].displayColor
-
-            val innerR = radialLayer * (minRingPx + spacingPx) * scale
-            val outerR = innerR + minRingPx * scale
-            val midR = (innerR + outerR) / 2f
-            val diameter = midR * 2f
-
-            drawArc(
-                color = color,
-                startAngle = -90f,
-                sweepAngle = 360f,
-                useCenter = false,
-                topLeft = Offset(c.x - midR, c.y - midR),
-                size = Size(diameter, diameter),
-                style = Stroke(width = ringW + overlapPx, cap = StrokeCap.Butt)
-            )
-        }
-
-        // Borde exterior ultra-delgado (casi imperceptible)
-        drawCircle(
-            color = Color.Black.copy(alpha = 0.12f),
-            radius = maxRadius - 0.5f,
-            style = Stroke(width = 1f)
-        )
-    }
+private fun YearMonth.displayName(): String {
+    val formatter = DateTimeFormatter.ofPattern("MMMM yyyy", Locale("es", "ES"))
+    return formatter.format(this).replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale("es", "ES")) else it.toString() }
 }
 
-// ------------------------------------------------------------
-// Contadores
-// ------------------------------------------------------------
-@Composable
-private fun CountBadge(label: String, count: Int, color: Color) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            modifier = Modifier
-                .size(22.dp)
-                .clip(CircleShape)
-                .background(color)
-        )
-        Text("$count", fontWeight = FontWeight.Bold)
-        Text(label, style = MaterialTheme.typography.labelSmall)
-    }
+private fun DayColor.resolveColor(isDark: Boolean): Color = when (this) {
+    DayColor.ROJO -> if (isDark) Color(0xFFF36C6C) else Color(0xFFD32F2F)
+    DayColor.AMARILLO -> if (isDark) Color(0xFFFFD54F) else Color(0xFFFFC107)
+    DayColor.VERDE -> if (isDark) Color(0xFF66BB6A) else Color(0xFF43A047)
 }
 
-// ------------------------------------------------------------
-// Helpers
-// ------------------------------------------------------------
-private fun Long.atStartOfDay(): Long {
-    val cal = Calendar.getInstance().apply { timeInMillis = this@atStartOfDay }
-    cal.set(Calendar.HOUR_OF_DAY, 0)
-    cal.set(Calendar.MINUTE, 0)
-    cal.set(Calendar.SECOND, 0)
-    cal.set(Calendar.MILLISECOND, 0)
-    return cal.timeInMillis
+private fun DayColor.toReadableName(): String = when (this) {
+    DayColor.ROJO -> "Rojo"
+    DayColor.AMARILLO -> "Amarillo"
+    DayColor.VERDE -> "Verde"
 }
