@@ -1,7 +1,7 @@
 /*
  * Screen "Progreso" — Versión coronas concéntricas (28 anillos)
  * Cambios solicitados:
- *  - Letras del gráfico lineal en negro siempre
+ *  - Letras del gráfico lineal: negro en modo claro y blanco en modo oscuro
  *  - Gráfico lineal: últimos 7 días incluyendo HOY
  *  - Gráfico circular: se ajusta al tamaño real del Canvas para verse completo (sin cambiar grosores/bordes)
  *  - CORRECCIÓN: limitar tamaño visible del gráfico circular para que no se recorte en su sección
@@ -244,7 +244,7 @@ private fun ProgressContent(
         }
     }
 
-    // ----- Diálogo para editar pesos anteriores -----
+    // ----- Diálogo para editar pesos anteriores (UNA SOLA VARIABLE) -----
     var showWeightEditor by remember { mutableStateOf(false) }
 
     Column(
@@ -364,19 +364,15 @@ private fun ProgressContent(
             shape = RoundedCornerShape(16.dp),
             tonalElevation = 2.dp
         ) {
-            // Calcula el tamaño del gráfico según el ancho disponible y agrega espaciado
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 16.dp)
             ) {
-                // Tamaño objetivo del gráfico (cuadrado)
-                val chartMax: Dp = minOf(maxWidth, 440.dp) // límite superior
-                val chartMin: Dp = 320.dp                  // límite inferior para pantallas chicas
+                val chartMax: Dp = minOf(maxWidth, 440.dp)
+                val chartMin: Dp = 320.dp
                 val chartSize: Dp = chartMax.coerceAtLeast(chartMin)
 
-                // Paddings dinámicos según el tamaño del gráfico
-                // ↑ AUMENTADOS para mayor separación entre título, gráfico y botón "Hoy"
                 val topPad: Dp = when {
                     chartSize >= 420.dp -> 44.dp
                     chartSize >= 380.dp -> 36.dp
@@ -400,21 +396,18 @@ private fun ProgressContent(
                         fontWeight = FontWeight.SemiBold
                     )
 
-                    // ↓ espacio mayor antes del gráfico para que el título quede más arriba
                     Spacer(Modifier.height(topPad))
 
-                    // El gráfico se dibuja con tamaño fijo calculado
                     ConcentricCrowns(
                         today = today,
                         snapshot = snapshot,
                         isDark = isDark,
                         onRingSelected = { date -> editorDate = date },
                         modifier = Modifier
-                            .size(chartSize)     // cuadrado del tamaño calculado
+                            .size(chartSize)
                             .align(Alignment.CenterHorizontally)
                     )
 
-                    // ↓ espacio mayor antes del botón "Hoy"
                     Spacer(Modifier.height(bottomPadBeforeButton))
 
                     Button(
@@ -466,7 +459,7 @@ private fun ProgressContent(
         )
     }
 
-    // Editor de color+nota
+    // Editor de color+nota — usa scope/haptics capturados (sin invocar composables aquí)
     editorDate?.let { date ->
         DayEditorDialog(
             date = date,
@@ -485,7 +478,7 @@ private fun ProgressContent(
         )
     }
 
-    // Diálogo para editar pesos anteriores
+    // Diálogo para editar pesos anteriores — usa la MISMA variable showWeightEditor
     if (showWeightEditor) {
         WeightEditorDialog(
             initialDate = today.minusDays(1),
@@ -563,9 +556,9 @@ private fun WeightHistoryChart(entries: List<Pair<LocalDate, Double>>, isDark: B
     }
 
     val density = LocalDensity.current
-    val labelPaint = remember(density) {
+    val labelPaint = remember(density, isDark) {
         Paint().apply {
-            color = android.graphics.Color.BLACK
+            color = if (isDark) android.graphics.Color.WHITE else android.graphics.Color.BLACK
             textAlign = Paint.Align.CENTER
             textSize = with(density) { 12.sp.toPx() }
             isAntiAlias = true
@@ -688,7 +681,6 @@ private fun ConcentricCrowns(
 
     val days: List<LocalDate> = remember(today) { (0..27).map { today.minusDays(it.toLong()) } }
 
-    // Precalcular fracciones de animación
     val animFractions: List<Float> = days.map {
         val v by animateFloatAsState(
             targetValue = 1f,
@@ -697,15 +689,14 @@ private fun ConcentricCrowns(
         v
     }
 
-    // Área cuadrada adaptable (limitada por el modifier recibido)
     BoxWithConstraints(
         modifier = modifier
             .semantics { contentDescription = "Gráfico de 28 anillos (coronas concéntricas)" }
     ) {
         val density = LocalDensity.current
         val outlineColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)
-        val gapPx = with(density) { 2.dp.toPx() }      // separación entre anillos
-        val paddingPx = with(density) { 16.dp.toPx() } // padding interno
+        val gapPx = with(density) { 2.dp.toPx() }
+        val paddingPx = with(density) { 16.dp.toPx() }
         val totalRings = 28
 
         Canvas(
@@ -718,11 +709,10 @@ private fun ConcentricCrowns(
             val centerY = size.height / 2f
             val availableRadius = (minDim / 2f - paddingPx) * pulse.value
 
-            // Grosor por anillo calculado para que TODO quepa
             val ringThickness = ((availableRadius - gapPx * (totalRings - 1)) / totalRings)
                 .coerceAtLeast(with(density) { 6.dp.toPx() })
 
-            // Centro = día 0 (hoy) → DISCO sólido
+            // Disco central (hoy)
             run {
                 val date = days.first()
                 val status = snapshot.dayStatuses[date] ?: DayColor.ROJO
@@ -761,7 +751,6 @@ private fun ConcentricCrowns(
                     style = Stroke(width = ringThickness, cap = StrokeCap.Butt)
                 )
 
-                // Borde exterior fino
                 val borderRadius = radius + ringThickness / 2f
                 drawArc(
                     color = outlineColor,
@@ -773,7 +762,7 @@ private fun ConcentricCrowns(
                     style = Stroke(width = with(density) { 1.dp.toPx() }, cap = StrokeCap.Butt)
                 )
 
-                // Tick de nota arriba (12 en punto)
+                // Tick de nota a las 12
                 if (snapshot.notes.containsKey(date)) {
                     val theta = (-90f * (PI / 180f)).toFloat()
                     val inner = radius - ringThickness / 2f + ringThickness * 0.2f
@@ -794,12 +783,6 @@ private fun ConcentricCrowns(
         }
     }
 }
-
-private data class RingInfo(
-    val date: LocalDate,
-    val color: Color,
-    val radius: Float
-)
 
 /* --------------------- Calendario con leyenda R/A/V --------------------- */
 @OptIn(ExperimentalFoundationApi::class)
@@ -1110,9 +1093,9 @@ private fun YearMonth.displayName(): String {
 }
 
 private fun DayColor.resolveColor(isDark: Boolean): Color = when (this) {
-    DayColor.ROJO -> if (isDark) Color(0xFFF36C6C) else Color(0xFFD32F2F)
-    DayColor.AMARILLO -> if (isDark) Color(0xFFFFD54F) else Color(0xFFFFC107)
-    DayColor.VERDE -> if (isDark) Color(0xFF66BB6A) else Color(0xFF43A047)
+    DayColor.ROJO -> if (isDark) Color(0xFFFF0000) else Color(0xFFFF0000)
+    DayColor.AMARILLO -> if (isDark) Color(0xFFFFFF00) else Color(0xFFFFFF00)
+    DayColor.VERDE -> if (isDark) Color(0xFF00FF00) else Color(0xFF00FF00)
 }
 
 private fun DayColor.toReadableName(): String = when (this) {
