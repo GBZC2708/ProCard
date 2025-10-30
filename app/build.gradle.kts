@@ -50,5 +50,9 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
+    implementation(libs.androidx.compose.foundation)
     kapt(libs.androidx.room.compiler)
+
+    implementation("androidx.compose.ui:ui-text:1.7.4")
+
 }

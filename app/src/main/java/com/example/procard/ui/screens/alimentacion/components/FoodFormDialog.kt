@@ -5,35 +5,35 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ArrowDropDown
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenu
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.procard.model.alimentacion.FoodForm
 import com.example.procard.model.alimentacion.VALID_FOOD_UNITS
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Button
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ArrowDropDown
 
 /**
  * Diálogo reutilizable para crear o editar un alimento.
@@ -104,9 +104,7 @@ fun FoodFormDialog(
                     carbsError.value,
                     kcalError.value
                 ).any { it != null }
-                if (!hasError) {
-                    onConfirm(form)
-                }
+                if (!hasError) onConfirm(form)
             }) {
                 Text("Guardar")
             }
@@ -127,7 +125,9 @@ private fun NameField(
 ) {
     val suggestions = remember(form.name, existingNames) {
         if (form.name.isBlank()) emptyList()
-        else existingNames.filter { it.contains(form.name, ignoreCase = true) && it != form.name }.take(5)
+        else existingNames
+            .filter { it.contains(form.name, ignoreCase = true) && it != form.name }
+            .take(5)
     }
     Column {
         OutlinedTextField(
@@ -171,7 +171,7 @@ private fun QuantityField(
         label = { Text("Cantidad base") },
         isError = errorState.value != null,
         supportingText = { Text(errorState.value ?: "Introduce la cantidad asociada a los macros.") },
-        keyboardOptions = androidx.compose.ui.text.input.KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
+        keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
         modifier = Modifier.fillMaxWidth()
     )
 }
@@ -200,10 +200,13 @@ private fun UnitField(
         )
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { onExpandedChange(false) }) {
             VALID_FOOD_UNITS.forEach { unit ->
-                DropdownMenuItem(text = { Text(unit) }, onClick = {
-                    onUnitSelected(unit)
-                    onExpandedChange(false)
-                })
+                DropdownMenuItem(
+                    text = { Text(unit) },
+                    onClick = {
+                        onUnitSelected(unit)
+                        onExpandedChange(false)
+                    }
+                )
             }
         }
     }
@@ -225,7 +228,7 @@ private fun MacroFields(
         label = { Text("Proteína (g)") },
         isError = proteinError.value != null,
         supportingText = { Text(proteinError.value ?: "Gramos de proteína") },
-        keyboardOptions = androidx.compose.ui.text.input.KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
+        keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
         modifier = Modifier.fillMaxWidth()
     )
     Spacer(modifier = Modifier.height(8.dp))
@@ -235,7 +238,7 @@ private fun MacroFields(
         label = { Text("Grasa (g)") },
         isError = fatError.value != null,
         supportingText = { Text(fatError.value ?: "Gramos de grasa") },
-        keyboardOptions = androidx.compose.ui.text.input.KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
+        keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
         modifier = Modifier.fillMaxWidth()
     )
     Spacer(modifier = Modifier.height(8.dp))
@@ -245,7 +248,7 @@ private fun MacroFields(
         label = { Text("Carbohidratos (g)") },
         isError = carbsError.value != null,
         supportingText = { Text(carbsError.value ?: "Gramos de carbohidratos") },
-        keyboardOptions = androidx.compose.ui.text.input.KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
+        keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
         modifier = Modifier.fillMaxWidth()
     )
     Spacer(modifier = Modifier.height(8.dp))
@@ -255,7 +258,7 @@ private fun MacroFields(
         label = { Text("Calorías (kcal)") },
         isError = kcalError.value != null,
         supportingText = { Text(kcalError.value ?: "Energía total") },
-        keyboardOptions = androidx.compose.ui.text.input.KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
+        keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
         modifier = Modifier.fillMaxWidth()
     )
 }
