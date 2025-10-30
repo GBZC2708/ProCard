@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ContentCopy
@@ -102,6 +104,7 @@ fun AlimentacionScreen() {
     var addTargetFood by remember { mutableStateOf<Food?>(null) }
     var editItem by remember { mutableStateOf<DailyLogItem?>(null) }
     var pendingDeleteFood by remember { mutableStateOf<Food?>(null) }
+    var showHistoryEditor by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         try {
@@ -153,6 +156,7 @@ fun AlimentacionScreen() {
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
+        val previousHistory = uiState.history.filter { it.date != uiState.todayDate }
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -226,10 +230,23 @@ fun AlimentacionScreen() {
                     onDeleteItem = viewModel::deleteLogItem,
                     onSaveDay = viewModel::saveToday,
                     onOpenCatalog = { selectedTab = AlimentacionTab.Catalogo },
-                    onDuplicateFromHistory = viewModel::duplicateFromHistory
+                    onDuplicateFromHistory = viewModel::duplicateFromHistory,
+                    previousHistory = previousHistory,
+                    onEditHistory = { showHistoryEditor = true }
                 )
             }
         }
+    }
+
+    if (showHistoryEditor) {
+        HistoryEditDialog(
+            history = previousHistory,
+            onDismiss = { showHistoryEditor = false },
+            onSave = { date, protein, fat, carbs, kcal ->
+                viewModel.updateHistoryTotals(date, protein, fat, carbs, kcal)
+                showHistoryEditor = false
+            }
+        )
     }
 
     if (showFoodDialog) {
@@ -430,7 +447,9 @@ private fun IngestaTab(
     onDeleteItem: (Long) -> Unit,
     onSaveDay: () -> Unit,
     onOpenCatalog: () -> Unit,
-    onDuplicateFromHistory: (String) -> Unit
+    onDuplicateFromHistory: (String) -> Unit,
+    previousHistory: List<DailyLog>,
+    onEditHistory: () -> Unit
 ) {
     val log = uiState.dailyLog
     Column(modifier = Modifier.fillMaxSize()) {
@@ -459,11 +478,13 @@ private fun IngestaTab(
             totalCarbs = log?.totalCarbs ?: 0.0,
             totalKcal = log?.totalKcal ?: 0.0,
             saved = log?.savedAt != null,
-            onSaveDay = onSaveDay
+            canEditHistory = previousHistory.isNotEmpty(),
+            onSaveDay = onSaveDay,
+            onEditPrevious = onEditHistory
         )
 
         HistorySection(
-            history = uiState.history.filter { it.date != uiState.todayDate },
+            history = previousHistory,
             onDuplicate = onDuplicateFromHistory
         )
     }
@@ -503,7 +524,9 @@ private fun SummaryFooter(
     totalCarbs: Double,
     totalKcal: Double,
     saved: Boolean,
-    onSaveDay: () -> Unit
+    canEditHistory: Boolean,
+    onSaveDay: () -> Unit,
+    onEditPrevious: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -530,6 +553,23 @@ private fun SummaryFooter(
                 text = "Día no guardado",
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedButton(
+            onClick = onEditPrevious,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = canEditHistory
+        ) {
+            Icon(Icons.Rounded.History, contentDescription = null)
+            Spacer(modifier = Modifier.size(8.dp))
+            Text("Editar registros anteriores")
+        }
+        if (!canEditHistory) {
+            Text(
+                text = "Sin registros previos disponibles.",
+                style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier.padding(top = 8.dp)
             )
         }
@@ -566,4 +606,137 @@ private fun HistorySection(history: List<DailyLog>, onDuplicate: (String) -> Uni
             }
         }
     }
+}
+
+/**
+ * Diálogo que permite seleccionar un día anterior y ajustar manualmente sus totales.
+ */
+@Composable
+private fun HistoryEditDialog(
+    history: List<DailyLog>,
+    onDismiss: () -> Unit,
+    onSave: (String, Double, Double, Double, Double) -> Unit
+) {
+    if (history.isEmpty()) {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text("Editar registros anteriores") },
+            text = { Text("No hay registros previos para editar.") },
+            confirmButton = {
+                TextButton(onClick = onDismiss) { Text("Entendido") }
+            }
+        )
+        return
+    }
+
+    // Índice del registro seleccionado dentro del historial.
+    var selectedIndex by remember { mutableStateOf(0) }
+    var proteinText by remember { mutableStateOf(formatNumber(history.first().totalProtein)) }
+    var fatText by remember { mutableStateOf(formatNumber(history.first().totalFat)) }
+    var carbsText by remember { mutableStateOf(formatNumber(history.first().totalCarbs)) }
+    var kcalText by remember { mutableStateOf(formatNumber(history.first().totalKcal)) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    // Sincroniza los campos cuando cambia el día seleccionado.
+    LaunchedEffect(selectedIndex, history) {
+        val log = history.getOrNull(selectedIndex) ?: history.first()
+        proteinText = formatNumber(log.totalProtein)
+        fatText = formatNumber(log.totalFat)
+        carbsText = formatNumber(log.totalCarbs)
+        kcalText = formatNumber(log.totalKcal, decimals = 0)
+        errorMessage = null
+    }
+
+    val selectedLog = history.getOrNull(selectedIndex) ?: history.first()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Editar registros anteriores") },
+        text = {
+            Column {
+                Text(
+                    text = "Selecciona un día y ajusta los totales manualmente.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    itemsIndexed(history) { index, log ->
+                        FilterChip(
+                            selected = index == selectedIndex,
+                            onClick = { selectedIndex = index },
+                            label = { Text(log.date) }
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = proteinText,
+                    onValueChange = { proteinText = it },
+                    label = { Text("Proteínas (g)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = fatText,
+                    onValueChange = { fatText = it },
+                    label = { Text("Grasas (g)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = carbsText,
+                    onValueChange = { carbsText = it },
+                    label = { Text("Carbos (g)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = kcalText,
+                    onValueChange = { kcalText = it },
+                    label = { Text("Calorías (kcal)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                errorMessage?.let { message ->
+                    Text(
+                        text = message,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val protein = proteinText.toDoubleOrNullSafe()
+                val fat = fatText.toDoubleOrNullSafe()
+                val carbs = carbsText.toDoubleOrNullSafe()
+                val kcal = kcalText.toDoubleOrNullSafe()
+                if (protein == null || fat == null || carbs == null || kcal == null) {
+                    errorMessage = "Ingresa valores numéricos válidos."
+                } else {
+                    onSave(selectedLog.date, protein, fat, carbs, kcal)
+                    errorMessage = null
+                }
+            }) {
+                Text("Guardar cambios")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar") }
+        }
+    )
+}
+
+/**
+ * Formatea números a cadena con el número de decimales indicado.
+ */
+private fun formatNumber(value: Double, decimals: Int = 1): String {
+    val pattern = if (decimals == 0) "%.0f" else "%.${decimals}f"
+    return String.format(Locale.getDefault(), pattern, value).trim()
+}
+
+/** Intenta convertir texto en Double aceptando comas. */
+private fun String.toDoubleOrNullSafe(): Double? {
+    return replace(',', '.').toDoubleOrNull()
 }

@@ -8,7 +8,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.example.procard.ui.screens.alimentacion.AlimentacionScreen
 import com.example.procard.ui.screens.cardio.CardioScreen
-import com.example.procard.ui.screens.descanso.DescansoScreen
+import com.example.procard.ui.screens.registro.RegistroScreen
 import com.example.procard.ui.screens.entrenamiento.EntrenamientoScreen
 import com.example.procard.ui.screens.progreso.ProgresoScreen
 import com.example.procard.ui.screens.suplementacion.SuplementacionScreen
@@ -22,7 +22,7 @@ fun AppNavHost(navController: NavHostController) {
         composable(NavRoute.Suplementacion.route) { SuplementacionScreen() }
         composable(NavRoute.Cardio.route) { CardioScreen() }
         composable(NavRoute.Entrenamiento.route) { EntrenamientoScreen() }
-        composable(NavRoute.Descanso.route) { DescansoScreen() }
+        composable(NavRoute.Registro.route) { RegistroScreen() }
     }
 }
 

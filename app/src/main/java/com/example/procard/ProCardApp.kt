@@ -6,7 +6,7 @@ import androidx.compose.material.icons.rounded.DirectionsRun
 import androidx.compose.material.icons.rounded.FitnessCenter
 import androidx.compose.material.icons.rounded.LocalDrink
 import androidx.compose.material.icons.rounded.MonitorHeart
-import androidx.compose.material.icons.rounded.Nightlight
+import androidx.compose.material.icons.rounded.ShowChart
 import androidx.compose.material.icons.rounded.Today
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -65,7 +65,7 @@ fun ProCardApp() {
                                 NavRoute.Suplementacion -> Icons.Rounded.MonitorHeart
                                 NavRoute.Cardio -> Icons.Rounded.DirectionsRun
                                 NavRoute.Entrenamiento -> Icons.Rounded.FitnessCenter
-                                NavRoute.Descanso -> Icons.Rounded.Nightlight
+                                NavRoute.Registro -> Icons.Rounded.ShowChart
                             }
                             NavigationBarItem(
                                 selected = selectedIndex == index,
