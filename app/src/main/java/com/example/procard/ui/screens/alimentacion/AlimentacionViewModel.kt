@@ -229,6 +229,15 @@ class AlimentacionViewModel(
         }
     }
 
+    /** Edita manualmente los totales de un día previo. */
+    fun updateHistoryTotals(date: String, protein: Double, fat: Double, carbs: Double, kcal: Double) {
+        viewModelScope.launch {
+            repository.updateManualTotals(date, protein, fat, carbs, kcal)
+                .onSuccess { _events.emit(AlimentacionEvent.ShowMessage("Registro actualizado.")) }
+                .onFailure { _events.emit(AlimentacionEvent.ShowError(it.message ?: "No se pudo actualizar.")) }
+        }
+    }
+
     /** Provee una fábrica sencilla para el ViewModel sin dependencias externas. */
     class Factory(private val repository: AlimentacionRepository) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {

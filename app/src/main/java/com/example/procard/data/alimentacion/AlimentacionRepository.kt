@@ -232,6 +232,31 @@ class AlimentacionRepository(
         }
     }
 
+    /**
+     * Actualiza manualmente los totales de un día específico.
+     * Permite corregir calorías o macros registrados previamente.
+     */
+    suspend fun updateManualTotals(
+        date: String,
+        protein: Double,
+        fat: Double,
+        carbs: Double,
+        kcal: Double
+    ): Result<Unit> {
+        return runCatching {
+            database.withTransaction {
+                val log = ensureDailyLog(date)
+                val updated = log.copy(
+                    totalProtein = round1(protein),
+                    totalFat = round1(fat),
+                    totalCarbs = round1(carbs),
+                    totalKcal = round0(kcal)
+                )
+                dao.updateDailyLog(updated)
+            }
+        }
+    }
+
     /** Auto guarda el último día registrado si quedó pendiente. */
     suspend fun autoSavePreviousIfNeeded(today: String): Result<SaveResult?> {
         return runCatching {
