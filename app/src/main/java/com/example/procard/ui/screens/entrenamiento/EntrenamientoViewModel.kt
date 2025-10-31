@@ -82,7 +82,37 @@ class EntrenamientoViewModel(private val repository: TrainingRepository) : ViewM
     }
 
     fun toggleEdit() {
-        _uiState.update { it.copy(isEditing = !it.isEditing) }
+        var newState: TrainingUiState? = null
+        _uiState.update { current ->
+            val enteringEdit = !current.isEditing
+            if (enteringEdit) {
+                val selectedId = current.selectedDayId
+                if (selectedId != null) {
+                    val detail = current.dayDetails[selectedId]
+                    if (detail != null) {
+                        val prepared = prepareDayForEditing(detail)
+                        if (prepared != detail) {
+                            val updatedDetails = current.dayDetails.toMutableMap()
+                            updatedDetails[selectedId] = prepared
+                            val updatedState = current.copy(
+                                dayDetails = updatedDetails,
+                                isEditing = true,
+                                autosaveMessage = "Plan inicial creado \u2713"
+                            )
+                            newState = updatedState
+                            return@update updatedState
+                        }
+                    }
+                }
+            }
+            val toggled = current.copy(
+                isEditing = !current.isEditing,
+                autosaveMessage = null
+            )
+            newState = toggled
+            toggled
+        }
+        newState?.let { persistState(it) }
     }
 
     fun consumeAutosave() {
@@ -480,6 +510,37 @@ private fun appendEmptyExerciseLog(day: TrainingDay, exercise: ExercisePlan): Tr
     val remainingLogs = day.logs.drop(1)
     return day.copy(logs = listOf(updatedLog) + remainingLogs)
 }
+
+private fun prepareDayForEditing(detail: TrainingDayDetail): TrainingDayDetail {
+    if (detail.day.plan != null) return detail
+    val nextVersion = detail.day.version + 1
+    val firstExercise = createDefaultExercise()
+    val initialPlan = DayPlan(
+        trainingName = "Nuevo entrenamiento",
+        exercises = listOf(firstExercise),
+        cardio = null,
+        version = nextVersion
+    )
+    var updatedDay = detail.day.copy(plan = initialPlan, version = nextVersion)
+    initialPlan.exercises.forEach { exercise ->
+        updatedDay = appendEmptyExerciseLog(updatedDay, exercise)
+    }
+    return detail.copy(day = updatedDay)
+}
+
+private fun createDefaultExercise(): ExercisePlan = ExercisePlan(
+    id = UUID.randomUUID().toString(),
+    name = "Nuevo ejercicio",
+    series = listOf(
+        SeriesPlan(
+            index = 0,
+            targetReps = 10,
+            targetWeight = 0f,
+            prefill = PrefillData(PrefillSource.TEMPLATE, 10, 0f, null)
+        )
+    ),
+    pr = null
+)
 
 private fun syncSeriesLogs(day: TrainingDay, updatedPlan: DayPlan): TrainingDay {
     val currentLog = day.logs.firstOrNull() ?: return day.copy(plan = updatedPlan)
