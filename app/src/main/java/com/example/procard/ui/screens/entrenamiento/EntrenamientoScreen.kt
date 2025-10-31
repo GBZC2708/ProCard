@@ -1,6 +1,7 @@
 package com.example.procard.ui.screens.entrenamiento
 
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,12 +12,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
@@ -268,14 +271,14 @@ private fun WeeklyOverview(
 ) {
     Column(Modifier.fillMaxWidth()) {
         Text(
-            text = "Semana actual",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            text = "Semana (L–D)",
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
         )
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             items(week.days) { day ->
                 WeeklyDayCard(day = day, selected = day.id == selectedId) { onSelect(day.id) }
@@ -295,31 +298,32 @@ private fun WeeklyDayCard(day: TrainingDay, selected: Boolean, onClick: () -> Un
             containerColor = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface
         ),
         modifier = Modifier
-            .width(180.dp)
-            .height(110.dp)
-            .border(1.dp, borderColor, RoundedCornerShape(16.dp))
+            .width(132.dp)
+            .height(108.dp)
+            .border(1.dp, borderColor, RoundedCornerShape(10.dp))
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.SpaceBetween) {
-            Column {
-                Text(day.dayOfWeek.displayName, style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(4.dp))
-                if (day.plan == null) {
-                    Text(
-                        "Día aún sin configurar",
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                } else {
-                    Text(day.plan.trainingName, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(day.dayOfWeek.displayName, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                val planName = day.plan?.trainingName ?: "Día aún sin configurar"
+                Text(
+                    planName,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
             AssistChip(
                 onClick = {},
-                label = { Text(statusText) },
+                label = { Text(statusText, style = MaterialTheme.typography.labelMedium) },
                 leadingIcon = { Icon(Icons.Default.Check, contentDescription = null, tint = statusColor) },
                 colors = androidx.compose.material3.AssistChipDefaults.assistChipColors(
-                    containerColor = statusColor.copy(alpha = 0.12f)
+                    containerColor = statusColor.copy(alpha = 0.08f)
                 )
             )
         }
@@ -344,92 +348,120 @@ private fun DayDetail(
     onUpdateCardio: (CardioPlan?) -> Unit,
     weekMetrics: WeeklyMetrics
 ) {
-    Column(Modifier.fillMaxSize()) {
+    val listState = rememberLazyListState()
+    val configuredPlan = detail.day.plan
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        state = listState,
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            DayHeader(
+                detail = detail,
+                isEditing = isEditing,
+                onToggleEdit = onToggleEdit,
+                onSaveDay = onSaveDay,
+                onUpdateTrainingName = onUpdateTrainingName
+            )
+        }
+        if (configuredPlan == null) {
+            item { EmptyDaySection(onToggleEdit) }
+        } else {
+            item {
+                ExercisesSection(
+                    plan = configuredPlan,
+                    isEditing = isEditing,
+                    detail = detail,
+                    onUpdateExerciseName = onUpdateExerciseName,
+                    onAddExercise = onAddExercise,
+                    onRemoveExercise = onRemoveExercise,
+                    onMoveExercise = onMoveExercise,
+                    onSeriesCountChange = onSeriesCountChange,
+                    onSeriesLogChange = onSeriesLogChange,
+                    onSaveExercise = onSaveExercise
+                )
+            }
+            item {
+                CardioSection(
+                    plan = configuredPlan.cardio,
+                    cardioLog = detail.day.cardioLog,
+                    isEditing = isEditing,
+                    onToggleCardio = onToggleCardio,
+                    onUpdateCardio = onUpdateCardio
+                )
+            }
+            item { HistorySection(detail.history) }
+            item { ComparisonsSection(detail.comparisons) }
+        }
+        item { MetricsSection(weekMetrics) }
+    }
+}
+
+@Composable
+private fun DayHeader(
+    detail: TrainingDayDetail,
+    isEditing: Boolean,
+    onToggleEdit: () -> Unit,
+    onSaveDay: () -> Unit,
+    onUpdateTrainingName: (String) -> Unit
+) {
+    val statusColor = if (detail.day.isCompleted) Color(0xFF2E7D32) else MaterialTheme.colorScheme.secondary
+    val statusText = if (detail.day.isCompleted) "Completado" else "No completado"
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                detail.day.dayOfWeek.displayName,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            if (isEditing) {
+                OutlinedTextField(
+                    value = detail.day.plan?.trainingName ?: "",
+                    onValueChange = onUpdateTrainingName,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Nombre del entrenamiento") },
+                    singleLine = true
+                )
+            } else {
+                Text(detail.day.title, style = MaterialTheme.typography.titleSmall)
+            }
+            AssistChip(
+                onClick = {},
+                leadingIcon = { Icon(Icons.Default.Check, contentDescription = null, tint = statusColor) },
+                label = { Text(statusText, style = MaterialTheme.typography.labelMedium) },
+                colors = androidx.compose.material3.AssistChipDefaults.assistChipColors(
+                    containerColor = statusColor.copy(alpha = 0.08f)
+                )
+            )
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(Modifier.weight(1f)) {
-                Text(detail.day.dayOfWeek.displayName, style = MaterialTheme.typography.headlineSmall)
-                Spacer(Modifier.height(4.dp))
-                if (isEditing) {
-                    OutlinedTextField(
-                        value = detail.day.plan?.trainingName ?: "",
-                        onValueChange = onUpdateTrainingName,
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Nombre del entrenamiento") }
-                    )
-                } else {
-                    Text(detail.day.title, style = MaterialTheme.typography.titleMedium)
-                }
-                Spacer(Modifier.height(4.dp))
-                val statusColor = if (detail.day.isCompleted) Color(0xFF2E7D32) else MaterialTheme.colorScheme.secondary
-                val statusText = if (detail.day.isCompleted) "Completado" else "No completado"
-                AssistChip(
-                    onClick = {},
-                    leadingIcon = { Icon(Icons.Default.Check, contentDescription = null, tint = statusColor) },
-                    label = { Text(statusText) },
-                    colors = androidx.compose.material3.AssistChipDefaults.assistChipColors(
-                        containerColor = statusColor.copy(alpha = 0.12f)
-                    )
-                )
+            FilledTonalButton(
+                onClick = onToggleEdit,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Icon(Icons.Default.Edit, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text(if (isEditing) "Terminar edición" else "Editar día")
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(onClick = onToggleEdit) {
-                    Icon(Icons.Default.Edit, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(if (isEditing) "Terminar edición" else "Editar día")
-                }
-                Button(onClick = onSaveDay) {
-                    Icon(Icons.Default.Check, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Guardar día")
-                }
+            Button(
+                onClick = onSaveDay,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Icon(Icons.Default.Check, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text("Guardar día")
             }
         }
-
-        if (detail.day.plan == null) {
-            EmptyDaySection(onToggleEdit)
-            MetricsSection(weekMetrics)
-            return
-        }
-
-        Column(
-            modifier = Modifier
-                .padding(horizontal = 16.dp)
-                .weight(1f, fill = false)
-                .verticalScroll(rememberScrollState())
-        ) {
-            ExercisesSection(
-                plan = detail.day.plan,
-                isEditing = isEditing,
-                detail = detail,
-                onUpdateExerciseName = onUpdateExerciseName,
-                onAddExercise = onAddExercise,
-                onRemoveExercise = onRemoveExercise,
-                onMoveExercise = onMoveExercise,
-                onSeriesCountChange = onSeriesCountChange,
-                onSeriesLogChange = onSeriesLogChange,
-                onSaveExercise = onSaveExercise
-            )
-            Spacer(Modifier.height(24.dp))
-            CardioSection(
-                plan = detail.day.plan.cardio,
-                cardioLog = detail.day.cardioLog,
-                isEditing = isEditing,
-                onToggleCardio = onToggleCardio,
-                onUpdateCardio = onUpdateCardio
-            )
-            Spacer(Modifier.height(24.dp))
-            HistorySection(detail.history)
-            Spacer(Modifier.height(24.dp))
-            ComparisonsSection(detail.comparisons)
-        }
-
-        MetricsSection(weekMetrics)
     }
 }
 
@@ -438,14 +470,18 @@ private fun EmptyDaySection(onEdit: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(vertical = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text("Día aún sin configurar", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(8.dp))
-        Text("Configura este día para comenzar a registrar", style = MaterialTheme.typography.bodyMedium)
-        Spacer(Modifier.height(16.dp))
-        Button(onClick = onEdit) { Text("Editar día") }
+        Text("Día aún sin configurar", style = MaterialTheme.typography.titleSmall)
+        Text("Configura este día para comenzar a registrar", style = MaterialTheme.typography.bodySmall)
+        FilledTonalButton(
+            onClick = onEdit,
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+        ) {
+            Text("Editar día")
+        }
     }
 }
 
@@ -468,41 +504,48 @@ private fun ExercisesSection(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Ejercicios", style = MaterialTheme.typography.titleMedium)
+            Text("Ejercicios", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             if (isEditing) {
-                FilledTonalButton(onClick = onAddExercise) {
+                FilledTonalButton(
+                    onClick = onAddExercise,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                ) {
                     Icon(Icons.Default.Add, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Agregar ejercicio")
+                    Spacer(Modifier.width(6.dp))
+                    Text("Agregar")
                 }
             }
         }
-        Spacer(Modifier.height(12.dp))
-        plan.exercises.forEachIndexed { index, exercise ->
-            val currentLog = detail.day.logs.firstOrNull()
-            val seriesLogs = currentLog?.series?.filter { it.exerciseId == exercise.id } ?: emptyList()
-            val exerciseLog = currentLog?.exerciseLogs?.firstOrNull { it.exerciseId == exercise.id }
-            ExerciseCard(
-                exerciseNumber = index + 1,
-                exercise = exercise,
-                isEditing = isEditing,
-                log = exerciseLog,
-                seriesLogs = seriesLogs,
-                onUpdateExerciseName = { onUpdateExerciseName(exercise.id, it) },
-                onMoveUp = { onMoveExercise(exercise.id, -1) },
-                onMoveDown = { onMoveExercise(exercise.id, +1) },
-                showMoveUp = isEditing && index > 0,
-                showMoveDown = isEditing && index < plan.exercises.lastIndex,
-                onRemove = { onRemoveExercise(exercise, index) },
-                onSeriesCountChange = { newCount ->
-                    onSeriesCountChange(exercise.id, exercise.series.size, newCount)
-                },
-                onSeriesLogChange = { seriesIndex, reps, weight ->
-                    onSeriesLogChange(exercise.id, seriesIndex, reps, weight)
-                },
-                onSaveExercise = { onSaveExercise(exercise.id) }
-            )
-            Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(8.dp))
+        if (plan.exercises.isEmpty()) {
+            Text("Aún no hay ejercicios configurados.", style = MaterialTheme.typography.bodySmall)
+        } else {
+            plan.exercises.forEachIndexed { index, exercise ->
+                val currentLog = detail.day.logs.firstOrNull()
+                val seriesLogs = currentLog?.series?.filter { it.exerciseId == exercise.id } ?: emptyList()
+                val exerciseLog = currentLog?.exerciseLogs?.firstOrNull { it.exerciseId == exercise.id }
+                ExerciseCard(
+                    exerciseNumber = index + 1,
+                    exercise = exercise,
+                    isEditing = isEditing,
+                    log = exerciseLog,
+                    seriesLogs = seriesLogs,
+                    onUpdateExerciseName = { onUpdateExerciseName(exercise.id, it) },
+                    onMoveUp = { onMoveExercise(exercise.id, -1) },
+                    onMoveDown = { onMoveExercise(exercise.id, +1) },
+                    showMoveUp = isEditing && index > 0,
+                    showMoveDown = isEditing && index < plan.exercises.lastIndex,
+                    onRemove = { onRemoveExercise(exercise, index) },
+                    onSeriesCountChange = { newCount ->
+                        onSeriesCountChange(exercise.id, exercise.series.size, newCount)
+                    },
+                    onSeriesLogChange = { seriesIndex, reps, weight ->
+                        onSeriesLogChange(exercise.id, seriesIndex, reps, weight)
+                    },
+                    onSaveExercise = { onSaveExercise(exercise.id) }
+                )
+                Spacer(Modifier.height(10.dp))
+            }
         }
     }
 }
@@ -525,51 +568,59 @@ private fun ExerciseCard(
     onSaveExercise: () -> Unit
 ) {
     ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
                     text = "#${exerciseNumber}",
                     style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.padding(end = 12.dp)
+                    modifier = Modifier.padding(end = 8.dp)
                 )
                 if (isEditing) {
                     OutlinedTextField(
                         value = exercise.name,
                         onValueChange = onUpdateExerciseName,
                         modifier = Modifier.weight(1f),
-                        label = { Text("Nombre del ejercicio #$exerciseNumber") }
+                        label = { Text("Nombre del ejercicio") },
+                        singleLine = true
                     )
                 } else {
                     Text(
-                        "#${exerciseNumber} ${exercise.name}",
-                        style = MaterialTheme.typography.titleMedium,
+                        text = exercise.name,
+                        style = MaterialTheme.typography.titleSmall,
                         modifier = Modifier.weight(1f)
                     )
                 }
-                if (showMoveUp) {
-                    IconButton(onClick = onMoveUp) { Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Subir") }
-                }
-                if (showMoveDown) {
-                    IconButton(onClick = onMoveDown) { Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Bajar") }
-                }
-                if (isEditing) {
-                    IconButton(onClick = onRemove) { Icon(Icons.Default.Delete, contentDescription = "Eliminar") }
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (showMoveUp) {
+                        IconButton(onClick = onMoveUp) { Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Subir") }
+                    }
+                    if (showMoveDown) {
+                        IconButton(onClick = onMoveDown) { Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Bajar") }
+                    }
+                    if (isEditing) {
+                        IconButton(onClick = onRemove) { Icon(Icons.Default.Delete, contentDescription = "Eliminar") }
+                    }
                 }
             }
             exercise.pr?.let {
-                Spacer(Modifier.height(4.dp))
                 Text(it.formatted, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             }
             log?.let {
-                Spacer(Modifier.height(4.dp))
                 Text(it.differenceVsLast.asText, style = MaterialTheme.typography.bodySmall)
             }
-            Spacer(Modifier.height(12.dp))
             if (isEditing) {
                 SeriesCounter(current = exercise.series.size, onChange = onSeriesCountChange)
-                Spacer(Modifier.height(12.dp))
             }
-            exercise.series.forEach { series ->
+            exercise.series.forEachIndexed { index, series ->
                 val logEntry = seriesLogs.firstOrNull { it.seriesIndex == series.index }
                 SeriesRow(
                     index = series.index + 1,
@@ -577,15 +628,17 @@ private fun ExerciseCard(
                     log = logEntry,
                     onChange = { reps, weight -> onSeriesLogChange(series.index, reps, weight) }
                 )
-                Spacer(Modifier.height(8.dp))
+                if (index != exercise.series.lastIndex) {
+                    Spacer(Modifier.height(8.dp))
+                }
             }
-            Spacer(Modifier.height(12.dp))
             FilledTonalButton(
                 onClick = onSaveExercise,
-                modifier = Modifier.align(Alignment.End)
+                modifier = Modifier.align(Alignment.End),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
             ) {
                 Icon(Icons.Default.Check, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(6.dp))
                 Text("Guardar sets")
             }
         }
@@ -594,9 +647,12 @@ private fun ExerciseCard(
 
 @Composable
 private fun SeriesCounter(current: Int, onChange: (Int) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Series: $current", style = MaterialTheme.typography.bodyMedium)
-        Spacer(Modifier.width(8.dp))
+    Row(
+        modifier = Modifier.horizontalScroll(rememberScrollState()),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text("Series: $current", style = MaterialTheme.typography.bodySmall)
         IconButton(onClick = { onChange((current - 1).coerceAtLeast(1)) }) {
             Icon(Icons.Default.ArrowBack, contentDescription = "Menos series")
         }
@@ -613,22 +669,44 @@ private fun SeriesRow(
     log: SeriesLog?,
     onChange: (String, String) -> Unit
 ) {
-    Column {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text("Serie $index", style = MaterialTheme.typography.labelLarge)
-        Spacer(Modifier.height(4.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            val repsValue = log?.reps?.takeIf { it >= 0 }?.toString() ?: ""
-            val weightValue = log?.weight?.takeIf { it >= 0f }?.let { formatWeight(it) } ?: ""
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            var repsText by remember(log?.reps, log?.weight) {
+                mutableStateOf(log?.reps?.takeIf { it >= 0 }?.toString() ?: "")
+            }
+            var weightText by remember(log?.reps, log?.weight) {
+                mutableStateOf(log?.weight?.takeIf { it >= 0f }?.let { formatWeight(it) } ?: "")
+            }
             OutlinedTextField(
-                value = repsValue,
-                onValueChange = { onChange(it, weightValue) },
-                modifier = Modifier.weight(1f),
+                value = repsText,
+                onValueChange = { value ->
+                    val sanitized = value.filter { it.isDigit() }
+                    repsText = sanitized
+                    onChange(sanitized, weightText)
+                },
+                modifier = Modifier.widthIn(min = 88.dp),
+                singleLine = true,
                 label = { Text("Reps") }
             )
             OutlinedTextField(
-                value = weightValue,
-                onValueChange = { onChange(repsValue, it) },
-                modifier = Modifier.weight(1f),
+                value = weightText,
+                onValueChange = { value ->
+                    val allowed = value.filter { it.isDigit() || it == '.' || it == ',' }
+                    val normalized = allowed.replace(',', '.')
+                    if (normalized.count { it == '.' } <= 1) {
+                        weightText = allowed
+                        onChange(repsText, normalized)
+                    }
+                },
+                modifier = Modifier.widthIn(min = 88.dp),
+                singleLine = true,
                 label = { Text("Peso") }
             )
         }
@@ -650,7 +728,10 @@ private fun CardioSection(
     onUpdateCardio: (CardioPlan?) -> Unit
 ) {
     ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             var cardioType by remember(plan) { mutableStateOf(plan?.type ?: "") }
             var cardioMinutes by remember(plan) {
                 mutableStateOf(plan?.targetMinutes?.takeIf { it > 0 }?.toString() ?: "")
@@ -661,11 +742,11 @@ private fun CardioSection(
                 mutableStateOf(if (initialMinutes > 0) initialMinutes.toString() else "")
             }
             Row(
-                Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Cardio", style = MaterialTheme.typography.titleMedium)
+                Text("Cardio", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 if (isEditing) {
                     IconButton(onClick = {
                         if (plan == null) {
@@ -686,72 +767,66 @@ private fun CardioSection(
                     }
                 }
             }
-            Spacer(Modifier.height(12.dp))
             if (plan == null) {
-                Text("Cardio no configurado para este día", style = MaterialTheme.typography.bodyMedium)
+                Text("Cardio no configurado para este día", style = MaterialTheme.typography.bodySmall)
             } else {
                 val completed = cardioLog?.completed == true
                 if (isEditing) {
                     OutlinedTextField(
                         value = cardioType,
-                        onValueChange = {
-                            cardioType = it
-                        },
+                        onValueChange = { cardioType = it },
                         modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
                         label = { Text("Tipo de cardio") }
                     )
-                    Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
                         value = cardioMinutes,
-                        onValueChange = { input ->
-                            cardioMinutes = input.filter { it.isDigit() }
-                        },
+                        onValueChange = { input -> cardioMinutes = input.filter { it.isDigit() } },
                         modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
                         label = { Text("Duración objetivo (min)") }
                     )
-                    Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
                         value = cardioIntensity,
                         onValueChange = { cardioIntensity = it },
                         modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
                         label = { Text("Intensidad") }
                     )
-                    Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
                         value = actualMinutes,
-                        onValueChange = { input ->
-                            actualMinutes = input.filter { it.isDigit() }
-                        },
+                        onValueChange = { input -> actualMinutes = input.filter { it.isDigit() } },
                         modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
                         label = { Text("Minutos registrados") }
                     )
-                    Spacer(Modifier.height(12.dp))
-                    FilledTonalButton(onClick = {
-                        val minutesTarget = cardioMinutes.toIntOrNull() ?: plan.targetMinutes
-                        val updatedPlan = plan.copy(
-                            type = cardioType.ifBlank { plan.type },
-                            targetMinutes = minutesTarget,
-                            intensity = cardioIntensity.ifBlank { plan.intensity }
-                        )
-                        onUpdateCardio(updatedPlan)
-                        val minutesReal = actualMinutes.toIntOrNull() ?: minutesTarget
-                        onToggleCardio(completed, minutesReal)
-                    }) {
+                    FilledTonalButton(
+                        onClick = {
+                            val minutesTarget = cardioMinutes.toIntOrNull() ?: plan.targetMinutes
+                            val updatedPlan = plan.copy(
+                                type = cardioType.ifBlank { plan.type },
+                                targetMinutes = minutesTarget,
+                                intensity = cardioIntensity.ifBlank { plan.intensity }
+                            )
+                            onUpdateCardio(updatedPlan)
+                            val minutesReal = actualMinutes.toIntOrNull() ?: minutesTarget
+                            onToggleCardio(completed, minutesReal)
+                        },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
                         Icon(Icons.Default.Check, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
+                        Spacer(Modifier.width(6.dp))
                         Text("Guardar cardio")
                     }
                 } else {
-                    Text("Tipo: ${plan.type}", style = MaterialTheme.typography.bodyMedium)
-                    Text("Duración objetivo: ${plan.targetMinutes} min", style = MaterialTheme.typography.bodyMedium)
-                    Text("Intensidad: ${plan.intensity}", style = MaterialTheme.typography.bodyMedium)
-                    Spacer(Modifier.height(8.dp))
+                    Text("Tipo: ${plan.type}", style = MaterialTheme.typography.bodySmall)
+                    Text("Duración objetivo: ${plan.targetMinutes} min", style = MaterialTheme.typography.bodySmall)
+                    Text("Intensidad: ${plan.intensity}", style = MaterialTheme.typography.bodySmall)
                     Text(
                         text = "Minutos registrados: ${cardioLog?.actualMinutes ?: plan.targetMinutes}",
-                        style = MaterialTheme.typography.bodyMedium
+                        style = MaterialTheme.typography.bodySmall
                     )
                 }
-                Spacer(Modifier.height(12.dp))
                 val minutes = actualMinutes.toIntOrNull() ?: cardioLog?.actualMinutes ?: plan.targetMinutes
                 FilterChip(
                     selected = completed,
@@ -766,23 +841,24 @@ private fun CardioSection(
 @Composable
 private fun HistorySection(history: List<DayHistoryEntry>) {
     ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
-            Text("Historial rápido", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(12.dp))
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("Historial rápido", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             if (history.isEmpty()) {
-                Text("Sin registros previos", style = MaterialTheme.typography.bodyMedium)
+                Text("Sin registros previos", style = MaterialTheme.typography.bodySmall)
             } else {
-                history.take(3).forEach { entry ->
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp)
-                    ) {
-                        Text(entry.date.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), fontWeight = FontWeight.Bold)
+                val recent = history.take(3)
+                recent.forEachIndexed { index, entry ->
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(entry.date.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), fontWeight = FontWeight.SemiBold)
                         Text(entry.exerciseSummaries.joinToString(), style = MaterialTheme.typography.bodySmall)
                         Text("Mejor set: ${entry.bestSet}", style = MaterialTheme.typography.bodySmall)
                     }
-                    Divider()
+                    if (index < recent.lastIndex) {
+                        Divider()
+                    }
                 }
             }
         }
@@ -792,26 +868,24 @@ private fun HistorySection(history: List<DayHistoryEntry>) {
 @Composable
 private fun ComparisonsSection(comparisons: List<ExerciseComparison>) {
     ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
-            Text("Comparativa por ejercicio", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(12.dp))
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("Comparativa por ejercicio", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             if (comparisons.isEmpty()) {
-                Text("Sin datos para comparar", style = MaterialTheme.typography.bodyMedium)
+                Text("Sin datos para comparar", style = MaterialTheme.typography.bodySmall)
             } else {
-                comparisons.forEach { comparison ->
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp)
-                    ) {
-                        Text(comparison.exerciseName, fontWeight = FontWeight.Bold)
+                comparisons.forEachIndexed { index, comparison ->
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(comparison.exerciseName, fontWeight = FontWeight.SemiBold)
                         comparison.entries.sortedByDescending { it.date }.forEach { entry ->
                             Row(
                                 Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(entry.date.format(DateTimeFormatter.ofPattern("dd/MM")))
-                                Text(entry.bestSet)
+                                Text(entry.bestSet, style = MaterialTheme.typography.bodySmall)
                                 val trend = when (entry.trend) {
                                     PerformanceTrend.UP -> "↑"
                                     PerformanceTrend.DOWN -> "↓"
@@ -821,7 +895,9 @@ private fun ComparisonsSection(comparisons: List<ExerciseComparison>) {
                             }
                         }
                     }
-                    Divider()
+                    if (index < comparisons.lastIndex) {
+                        Divider()
+                    }
                 }
             }
         }
@@ -830,16 +906,12 @@ private fun ComparisonsSection(comparisons: List<ExerciseComparison>) {
 
 @Composable
 private fun MetricsSection(metrics: WeeklyMetrics) {
-    ElevatedCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp)
-    ) {
+    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             MetricItem("Total kilos", String.format("%.1f", metrics.totalWeight))
             MetricItem("Sets completados", metrics.totalSets.toString())
@@ -852,7 +924,7 @@ private fun MetricsSection(metrics: WeeklyMetrics) {
 private fun MetricItem(label: String, value: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
-        Text(value, style = MaterialTheme.typography.titleMedium)
+        Text(value, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
     }
 }
 

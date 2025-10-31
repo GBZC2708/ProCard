@@ -25,7 +25,11 @@ data class TrainingDay(
     val version: Int = 1
 ) {
     val isConfigured: Boolean get() = plan != null
-    val isCompleted: Boolean get() = logs.flatMap { it.series }.all { it.completed } && cardioRequirementMet
+    val isCompleted: Boolean
+        get() {
+            val hasCompletedSeries = logs.flatMap { it.series }.any { it.completed }
+            return hasCompletedSeries && cardioRequirementMet
+        }
 
     val cardioRequirementMet: Boolean
         get() = when {
