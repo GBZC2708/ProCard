@@ -9,9 +9,9 @@ data class TrainingWeek(
 ) {
     val metrics: WeeklyMetrics
         get() {
-            val totalWeight = days.sumOf { it.totalWeightLifted.toDouble() }
-            val totalSets = days.sumOf { it.completedSets }
-            val cardioMinutes = days.sumOf { it.cardioLog?.actualMinutes ?: 0 }
+            val totalWeight: Double = days.sumOf { it.totalWeightLifted.toDouble() }
+            val totalSets: Int = days.sumOf { it.completedSets }
+            val cardioMinutes: Int = days.sumOf { it.cardioLog?.actualMinutes ?: 0 }
             return WeeklyMetrics(totalWeight = totalWeight, totalSets = totalSets, cardioMinutes = cardioMinutes)
         }
 }
@@ -37,7 +37,10 @@ data class TrainingDay(
         get() = plan?.trainingName ?: "Día aún sin configurar"
 
     val totalWeightLifted: Float
-        get() = logs.flatMap { it.series }.sumOf { (it.weight ?: 0f) * (it.reps ?: 0) }.toFloat()
+        get() = logs
+            .flatMap { it.series }
+            .sumOf { ((it.weight ?: 0f) * (it.reps ?: 0)).toDouble() } // <- Forzamos Double en el selector
+            .toFloat()
 
     val completedSets: Int
         get() = logs.flatMap { it.series }.count { it.completed }
@@ -116,8 +119,8 @@ data class DifferenceVsLast(
     val asText: String
         get() {
             val weightText = when {
-                weightDiff > 0 -> "+${format(weightDiff)} kg"
-                weightDiff < 0 -> "${format(weightDiff)} kg"
+                weightDiff > 0f -> "+${format(weightDiff)} kg"
+                weightDiff < 0f -> "${format(weightDiff)} kg"
                 else -> "0 kg"
             }
             val repsText = when {
@@ -128,7 +131,8 @@ data class DifferenceVsLast(
             return "Hoy vs Último: $weightText / $repsText"
         }
 
-    private fun format(value: Float): String = if (value % 1f == 0f) value.toInt().toString() else String.format("%.1f", value)
+    private fun format(value: Float): String =
+        if (value % 1f == 0f) value.toInt().toString() else String.format("%.1f", value)
 }
 
 data class DayLogEntry(

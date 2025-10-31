@@ -46,7 +46,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberSnackbarHostState
+// OJO: eliminamos el import de rememberSnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -101,7 +101,10 @@ fun EntrenamientoScreen(viewModel: EntrenamientoViewModel = viewModel()) {
     }
 
     val uiState by viewModel.uiState.collectAsState()
-    val snackbarHost: SnackbarHostState = rememberSnackbarHostState()
+
+    // Reemplazo seguro compatible con todas las versiones:
+    val snackbarHost: SnackbarHostState = remember { SnackbarHostState() }
+
     val scope = rememberCoroutineScope()
 
     var pendingRemoval by remember { mutableStateOf<ExerciseRemoval?>(null) }
@@ -125,7 +128,7 @@ fun EntrenamientoScreen(viewModel: EntrenamientoViewModel = viewModel()) {
                 subtitle = NavRoute.Entrenamiento.subtitle
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHost) }
+        snackbarHost = { SnackbarHost(hostState = snackbarHost) }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -590,7 +593,8 @@ private fun SeriesRow(
     }
 }
 
-private fun formatWeight(weight: Float): String = if (weight % 1f == 0f) weight.toInt().toString() else String.format("%.1f", weight)
+private fun formatWeight(weight: Float): String =
+    if (weight % 1f == 0f) weight.toInt().toString() else String.format("%.1f", weight)
 
 @Composable
 private fun CardioSection(
@@ -654,7 +658,11 @@ private fun HistorySection(history: List<DayHistoryEntry>) {
                 Text("Sin registros previos", style = MaterialTheme.typography.bodyMedium)
             } else {
                 history.take(3).forEach { entry ->
-                    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp)
+                    ) {
                         Text(entry.date.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), fontWeight = FontWeight.Bold)
                         Text(entry.exerciseSummaries.joinToString(), style = MaterialTheme.typography.bodySmall)
                         Text("Mejor set: ${entry.bestSet}", style = MaterialTheme.typography.bodySmall)
@@ -676,7 +684,11 @@ private fun ComparisonsSection(comparisons: List<ExerciseComparison>) {
                 Text("Sin datos para comparar", style = MaterialTheme.typography.bodyMedium)
             } else {
                 comparisons.forEach { comparison ->
-                    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp)
+                    ) {
                         Text(comparison.exerciseName, fontWeight = FontWeight.Bold)
                         comparison.entries.sortedByDescending { it.date }.forEach { entry ->
                             Row(
