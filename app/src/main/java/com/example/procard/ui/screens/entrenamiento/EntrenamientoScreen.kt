@@ -58,6 +58,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -86,7 +87,14 @@ import kotlinx.coroutines.launch
 import java.time.format.DateTimeFormatter
 
 @Composable
-fun EntrenamientoScreen(viewModel: EntrenamientoViewModel = viewModel()) {
+fun EntrenamientoScreen() {
+    val context = LocalContext.current
+    val trainingRepository = remember(context.applicationContext) {
+        ServiceLocator.trainingRepository(context)
+    }
+    val viewModel: EntrenamientoViewModel = viewModel(
+        factory = EntrenamientoViewModel.provideFactory(trainingRepository)
+    )
     val repo = ServiceLocator.userRepository
     var user by remember { mutableStateOf<UserProfile?>(null) }
     var screenState by remember { mutableStateOf(ScreenState(loading = true)) }
@@ -157,6 +165,7 @@ fun EntrenamientoScreen(viewModel: EntrenamientoViewModel = viewModel()) {
                     detail = detail,
                     isEditing = uiState.isEditing,
                     onToggleEdit = viewModel::toggleEdit,
+                    onSaveDay = { viewModel.saveDay(detail.day.id) },
                     onUpdateTrainingName = { viewModel.updateTrainingName(detail.day.id, it) },
                     onUpdateExerciseName = { exerciseId, newName ->
                         viewModel.updateExerciseName(detail.day.id, exerciseId, newName)
@@ -177,6 +186,9 @@ fun EntrenamientoScreen(viewModel: EntrenamientoViewModel = viewModel()) {
                     },
                     onSeriesLogChange = { exerciseId, index, reps, weight ->
                         viewModel.updateSeriesLog(detail.day.id, exerciseId, index, reps, weight)
+                    },
+                    onSaveExercise = { exerciseId ->
+                        viewModel.saveExerciseProgress(detail.day.id, exerciseId)
                     },
                     onToggleCardio = { completed, minutes ->
                         viewModel.toggleCardio(detail.day.id, completed, minutes)
@@ -284,7 +296,7 @@ private fun WeeklyDayCard(day: TrainingDay, selected: Boolean, onClick: () -> Un
         ),
         modifier = Modifier
             .width(180.dp)
-            .height(140.dp)
+            .height(110.dp)
             .border(1.dp, borderColor, RoundedCornerShape(16.dp))
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.SpaceBetween) {
@@ -319,6 +331,7 @@ private fun DayDetail(
     detail: TrainingDayDetail,
     isEditing: Boolean,
     onToggleEdit: () -> Unit,
+    onSaveDay: () -> Unit,
     onUpdateTrainingName: (String) -> Unit,
     onUpdateExerciseName: (String, String) -> Unit,
     onAddExercise: () -> Unit,
@@ -326,6 +339,7 @@ private fun DayDetail(
     onMoveExercise: (String, Int) -> Unit,
     onSeriesCountChange: (String, Int, Int) -> Unit,
     onSeriesLogChange: (String, Int, String, String) -> Unit,
+    onSaveExercise: (String) -> Unit,
     onToggleCardio: (Boolean, Int) -> Unit,
     onUpdateCardio: (CardioPlan?) -> Unit,
     weekMetrics: WeeklyMetrics
@@ -363,10 +377,17 @@ private fun DayDetail(
                     )
                 )
             }
-            FilledTonalButton(onClick = onToggleEdit) {
-                Icon(Icons.Default.Edit, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text(if (isEditing) "Terminar edición" else "Editar día")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilledTonalButton(onClick = onToggleEdit) {
+                    Icon(Icons.Default.Edit, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (isEditing) "Terminar edición" else "Editar día")
+                }
+                Button(onClick = onSaveDay) {
+                    Icon(Icons.Default.Check, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Guardar día")
+                }
             }
         }
 
@@ -391,7 +412,8 @@ private fun DayDetail(
                 onRemoveExercise = onRemoveExercise,
                 onMoveExercise = onMoveExercise,
                 onSeriesCountChange = onSeriesCountChange,
-                onSeriesLogChange = onSeriesLogChange
+                onSeriesLogChange = onSeriesLogChange,
+                onSaveExercise = onSaveExercise
             )
             Spacer(Modifier.height(24.dp))
             CardioSection(
@@ -437,7 +459,8 @@ private fun ExercisesSection(
     onRemoveExercise: (ExercisePlan, Int) -> Unit,
     onMoveExercise: (String, Int) -> Unit,
     onSeriesCountChange: (String, Int, Int) -> Unit,
-    onSeriesLogChange: (String, Int, String, String) -> Unit
+    onSeriesLogChange: (String, Int, String, String) -> Unit,
+    onSaveExercise: (String) -> Unit
 ) {
     Column(Modifier.fillMaxWidth()) {
         Row(
@@ -460,6 +483,7 @@ private fun ExercisesSection(
             val seriesLogs = currentLog?.series?.filter { it.exerciseId == exercise.id } ?: emptyList()
             val exerciseLog = currentLog?.exerciseLogs?.firstOrNull { it.exerciseId == exercise.id }
             ExerciseCard(
+                exerciseNumber = index + 1,
                 exercise = exercise,
                 isEditing = isEditing,
                 log = exerciseLog,
@@ -475,7 +499,8 @@ private fun ExercisesSection(
                 },
                 onSeriesLogChange = { seriesIndex, reps, weight ->
                     onSeriesLogChange(exercise.id, seriesIndex, reps, weight)
-                }
+                },
+                onSaveExercise = { onSaveExercise(exercise.id) }
             )
             Spacer(Modifier.height(12.dp))
         }
@@ -484,6 +509,7 @@ private fun ExercisesSection(
 
 @Composable
 private fun ExerciseCard(
+    exerciseNumber: Int,
     exercise: ExercisePlan,
     isEditing: Boolean,
     log: ExerciseLog?,
@@ -495,20 +521,30 @@ private fun ExerciseCard(
     showMoveDown: Boolean,
     onRemove: () -> Unit,
     onSeriesCountChange: (Int) -> Unit,
-    onSeriesLogChange: (Int, String, String) -> Unit
+    onSeriesLogChange: (Int, String, String) -> Unit,
+    onSaveExercise: () -> Unit
 ) {
     ElevatedCard(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "#${exerciseNumber}",
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(end = 12.dp)
+                )
                 if (isEditing) {
                     OutlinedTextField(
                         value = exercise.name,
                         onValueChange = onUpdateExerciseName,
                         modifier = Modifier.weight(1f),
-                        label = { Text("Nombre del ejercicio") }
+                        label = { Text("Nombre del ejercicio #$exerciseNumber") }
                     )
                 } else {
-                    Text(exercise.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                    Text(
+                        "#${exerciseNumber} ${exercise.name}",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.weight(1f)
+                    )
                 }
                 if (showMoveUp) {
                     IconButton(onClick = onMoveUp) { Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Subir") }
@@ -542,6 +578,15 @@ private fun ExerciseCard(
                     onChange = { reps, weight -> onSeriesLogChange(series.index, reps, weight) }
                 )
                 Spacer(Modifier.height(8.dp))
+            }
+            Spacer(Modifier.height(12.dp))
+            FilledTonalButton(
+                onClick = onSaveExercise,
+                modifier = Modifier.align(Alignment.End)
+            ) {
+                Icon(Icons.Default.Check, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Guardar sets")
             }
         }
     }
@@ -606,6 +651,15 @@ private fun CardioSection(
 ) {
     ElevatedCard(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
+            var cardioType by remember(plan) { mutableStateOf(plan?.type ?: "") }
+            var cardioMinutes by remember(plan) {
+                mutableStateOf(plan?.targetMinutes?.takeIf { it > 0 }?.toString() ?: "")
+            }
+            var cardioIntensity by remember(plan) { mutableStateOf(plan?.intensity ?: "") }
+            var actualMinutes by remember(plan, cardioLog) {
+                val initialMinutes = cardioLog?.actualMinutes ?: plan?.targetMinutes ?: 0
+                mutableStateOf(if (initialMinutes > 0) initialMinutes.toString() else "")
+            }
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -616,8 +670,16 @@ private fun CardioSection(
                     IconButton(onClick = {
                         if (plan == null) {
                             onUpdateCardio(CardioPlan("Cinta", 20, "Moderado"))
+                            cardioType = "Cinta"
+                            cardioMinutes = "20"
+                            cardioIntensity = "Moderado"
+                            actualMinutes = "20"
                         } else {
                             onUpdateCardio(null)
+                            cardioType = ""
+                            cardioMinutes = ""
+                            cardioIntensity = ""
+                            actualMinutes = ""
                         }
                     }) {
                         Icon(imageVector = if (plan == null) Icons.Default.Add else Icons.Default.Delete, contentDescription = null)
@@ -628,21 +690,74 @@ private fun CardioSection(
             if (plan == null) {
                 Text("Cardio no configurado para este día", style = MaterialTheme.typography.bodyMedium)
             } else {
-                Text("Tipo: ${plan.type}", style = MaterialTheme.typography.bodyMedium)
-                Text("Duración objetivo: ${plan.targetMinutes} min", style = MaterialTheme.typography.bodyMedium)
-                Text("Intensidad: ${plan.intensity}", style = MaterialTheme.typography.bodyMedium)
-                Spacer(Modifier.height(12.dp))
                 val completed = cardioLog?.completed == true
-                val minutes = cardioLog?.actualMinutes ?: plan.targetMinutes
+                if (isEditing) {
+                    OutlinedTextField(
+                        value = cardioType,
+                        onValueChange = {
+                            cardioType = it
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Tipo de cardio") }
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = cardioMinutes,
+                        onValueChange = { input ->
+                            cardioMinutes = input.filter { it.isDigit() }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Duración objetivo (min)") }
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = cardioIntensity,
+                        onValueChange = { cardioIntensity = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Intensidad") }
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = actualMinutes,
+                        onValueChange = { input ->
+                            actualMinutes = input.filter { it.isDigit() }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Minutos registrados") }
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    FilledTonalButton(onClick = {
+                        val minutesTarget = cardioMinutes.toIntOrNull() ?: plan.targetMinutes
+                        val updatedPlan = plan.copy(
+                            type = cardioType.ifBlank { plan.type },
+                            targetMinutes = minutesTarget,
+                            intensity = cardioIntensity.ifBlank { plan.intensity }
+                        )
+                        onUpdateCardio(updatedPlan)
+                        val minutesReal = actualMinutes.toIntOrNull() ?: minutesTarget
+                        onToggleCardio(completed, minutesReal)
+                    }) {
+                        Icon(Icons.Default.Check, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Guardar cardio")
+                    }
+                } else {
+                    Text("Tipo: ${plan.type}", style = MaterialTheme.typography.bodyMedium)
+                    Text("Duración objetivo: ${plan.targetMinutes} min", style = MaterialTheme.typography.bodyMedium)
+                    Text("Intensidad: ${plan.intensity}", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "Minutos registrados: ${cardioLog?.actualMinutes ?: plan.targetMinutes}",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+                val minutes = actualMinutes.toIntOrNull() ?: cardioLog?.actualMinutes ?: plan.targetMinutes
                 FilterChip(
                     selected = completed,
                     onClick = { onToggleCardio(!completed, minutes) },
                     label = { Text(if (completed) "Cardio realizado" else "Marcar cardio realizado") }
                 )
-                if (completed) {
-                    Spacer(Modifier.height(8.dp))
-                    Text("Minutos reales: $minutes", style = MaterialTheme.typography.bodySmall)
-                }
             }
         }
     }

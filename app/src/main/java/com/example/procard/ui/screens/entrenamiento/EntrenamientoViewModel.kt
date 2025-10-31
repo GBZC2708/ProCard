@@ -1,7 +1,10 @@
 package com.example.procard.ui.screens.entrenamiento
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.procard.data.TrainingRepository
+import com.example.procard.data.TrainingSnapshot
 import com.example.procard.model.entrenamiento.CardioLog
 import com.example.procard.model.entrenamiento.CardioPlan
 import com.example.procard.model.entrenamiento.DayHistoryEntry
@@ -25,6 +28,7 @@ import com.example.procard.model.entrenamiento.TrainingWeek
 import com.example.procard.model.entrenamiento.WeeklyMetrics
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -53,25 +57,28 @@ data class TrainingUiState(
         get() = week.metrics
 }
 
-class EntrenamientoViewModel : ViewModel() {
+class EntrenamientoViewModel(private val repository: TrainingRepository) : ViewModel() {
     private val _uiState = MutableStateFlow(TrainingUiState(loading = true))
     val uiState: StateFlow<TrainingUiState> = _uiState
 
     init {
         viewModelScope.launch {
-            val details = createInitialDetails()
-            _uiState.update {
-                it.copy(
-                    dayDetails = details,
-                    selectedDayId = details.keys.firstOrNull(),
-                    loading = false
-                )
+            val snapshot = repository.observeSnapshot().firstOrNull()
+            val storedDetails = snapshot?.dayDetails?.takeIf { it.isNotEmpty() }
+            val details = storedDetails ?: createInitialDetails()
+            val initialState = TrainingUiState(
+                dayDetails = details,
+                selectedDayId = snapshot?.selectedDayId ?: details.keys.firstOrNull(),
+                isEditing = false,
+                loading = false,
+                error = null,
+                autosaveMessage = null
+            )
+            _uiState.value = initialState
+            if (snapshot == null || storedDetails == null) {
+                persistState(initialState)
             }
         }
-    }
-
-    fun selectDay(dayId: String) {
-        _uiState.update { it.copy(selectedDayId = dayId, isEditing = false) }
     }
 
     fun toggleEdit() {
@@ -228,15 +235,116 @@ class EntrenamientoViewModel : ViewModel() {
         }
     }
 
+    fun saveDay(dayId: String) {
+        updateDay(dayId, autosaveMessage = "Día guardado \u2713") { detail ->
+            val plan = detail.day.plan ?: return@updateDay detail
+            val summaries = plan.exercises.mapIndexed { index, exercise ->
+                "#${index + 1} ${exercise.name}"
+            }
+            val bestSeries = detail.day.logs
+                .firstOrNull()
+                ?.series
+                ?.maxByOrNull { (it.weight ?: 0f).toDouble() * (it.reps ?: 0) }
+            val bestSet = formatBestSet(plan, bestSeries)
+            val today = LocalDate.now()
+            val newHistory = listOf(
+                DayHistoryEntry(
+                    date = today,
+                    exerciseSummaries = summaries,
+                    bestSet = bestSet
+                )
+            ) + detail.history.filterNot { it.date == today }
+            detail.copy(history = newHistory)
+        }
+    }
+
+    fun saveExerciseProgress(dayId: String, exerciseId: String) {
+        var updatedState: TrainingUiState? = null
+        _uiState.update { current ->
+            val detail = current.dayDetails[dayId] ?: return@update current
+            val hasSeries = detail.day.logs.any { log ->
+                log.series.any { it.exerciseId == exerciseId }
+            }
+            if (!hasSeries) return@update current
+            val newState = current.copy(autosaveMessage = "Set guardado \u2713")
+            updatedState = newState
+            newState
+        }
+        updatedState?.let { persistState(it) }
+    }
+
     private fun updateDay(dayId: String, transformer: (TrainingDayDetail) -> TrainingDayDetail) {
+        updateDay(dayId, autosaveMessage = "Guardado \u2713", transformer = transformer)
+    }
+
+    private fun updateDay(
+        dayId: String,
+        autosaveMessage: String,
+        transformer: (TrainingDayDetail) -> TrainingDayDetail
+    ) {
+        var newState: TrainingUiState? = null
         _uiState.update { current ->
             val detail = current.dayDetails[dayId] ?: return@update current
             val newDetail = transformer(detail)
+            if (newDetail == detail) return@update current
             val newDetails = current.dayDetails.toMutableMap()
             newDetails[dayId] = newDetail
-            current.copy(dayDetails = newDetails, autosaveMessage = "Guardado \u2713")
+            val updated = current.copy(dayDetails = newDetails, autosaveMessage = autosaveMessage)
+            newState = updated
+            updated
+        }
+        newState?.let { persistState(it) }
+    }
+
+    fun selectDay(dayId: String) {
+        var newState: TrainingUiState? = null
+        _uiState.update { current ->
+            if (current.selectedDayId == dayId) return@update current
+            val updated = current.copy(selectedDayId = dayId, isEditing = false)
+            newState = updated
+            updated
+        }
+        newState?.let { persistState(it) }
+    }
+
+    private fun persistState(state: TrainingUiState) {
+        viewModelScope.launch {
+            val lastCompleted = state.dayDetails.values
+                .filter { it.day.isCompleted }
+                .maxByOrNull { it.day.logs.firstOrNull()?.date ?: LocalDate.MIN }
+                ?.day
+                ?.id
+            repository.saveSnapshot(
+                TrainingSnapshot(
+                    dayDetails = state.dayDetails,
+                    selectedDayId = state.selectedDayId,
+                    lastCompletedDayId = lastCompleted
+                )
+            )
         }
     }
+
+    companion object {
+        fun provideFactory(repository: TrainingRepository): ViewModelProvider.Factory =
+            object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    return EntrenamientoViewModel(repository) as T
+                }
+            }
+    }
+}
+
+private fun formatBestSet(plan: DayPlan, series: SeriesLog?): String {
+    if (series == null) return "Sin datos"
+    val exerciseName = plan.exercises.firstOrNull { it.id == series.exerciseId }?.name ?: "Ejercicio"
+    val reps = series.reps ?: 0
+    val weight = series.weight
+    val weightText = weight?.let { value ->
+        if (value % 1f == 0f) "${value.toInt()} kg" else String.format("%.1f kg", value)
+    }
+    val metrics = listOfNotNull(weightText, "× $reps").joinToString(" ")
+    return "$exerciseName: ${metrics.ifBlank { "Sin datos" }}"
 }
 
 private fun createInitialDetails(): Map<String, TrainingDayDetail> {
