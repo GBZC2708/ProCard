@@ -272,13 +272,13 @@ private fun WeeklyOverview(
     Column(Modifier.fillMaxWidth()) {
         Text(
             text = "Semana (L–D)",
-            style = MaterialTheme.typography.labelLarge,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
         )
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(week.days) { day ->
                 WeeklyDayCard(day = day, selected = day.id == selectedId) { onSelect(day.id) }
@@ -298,29 +298,37 @@ private fun WeeklyDayCard(day: TrainingDay, selected: Boolean, onClick: () -> Un
             containerColor = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface
         ),
         modifier = Modifier
-            .width(132.dp)
-            .height(108.dp)
-            .border(1.dp, borderColor, RoundedCornerShape(10.dp))
+            .width(148.dp)
+            .height(118.dp)
+            .border(1.dp, borderColor, RoundedCornerShape(12.dp))
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 10.dp, vertical = 8.dp),
+                .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(day.dayOfWeek.displayName, style = MaterialTheme.typography.titleSmall, maxLines = 1)
-                val planName = day.plan?.trainingName ?: "Día aún sin configurar"
-                Text(
-                    planName,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(day.dayOfWeek.displayName, style = MaterialTheme.typography.titleSmall)
+                if (day.plan == null) {
+                    Text(
+                        "Día aún sin configurar",
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                } else {
+                    Text(
+                        day.plan.trainingName,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
             AssistChip(
                 onClick = {},
-                label = { Text(statusText, style = MaterialTheme.typography.labelMedium) },
+                label = { Text(statusText, style = MaterialTheme.typography.labelLarge) },
                 leadingIcon = { Icon(Icons.Default.Check, contentDescription = null, tint = statusColor) },
                 colors = androidx.compose.material3.AssistChipDefaults.assistChipColors(
                     containerColor = statusColor.copy(alpha = 0.08f)
