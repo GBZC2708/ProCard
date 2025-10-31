@@ -5,6 +5,7 @@ import com.example.procard.data.alimentacion.AlimentacionDatabase
 import com.example.procard.data.alimentacion.AlimentacionRepository
 import com.example.procard.data.ProgressRepository
 import com.example.procard.data.ThemeRepository
+import com.example.procard.data.TrainingRepository
 import com.example.procard.data.UserRepository
 
 object ServiceLocator {
@@ -12,8 +13,14 @@ object ServiceLocator {
     private var themeRepo: ThemeRepository? = null
     private var alimentacionRepo: AlimentacionRepository? = null
     private var alimentacionDb: AlimentacionDatabase? = null
+    private var trainingRepo: TrainingRepository? = null
 
     val userRepository by lazy { UserRepository() }
+
+    fun trainingRepository(context: Context): TrainingRepository {
+        val appContext = context.applicationContext
+        return trainingRepo ?: TrainingRepository(appContext).also { trainingRepo = it }
+    }
 
     fun progressRepository(context: Context): ProgressRepository {
         val appContext = context.applicationContext
