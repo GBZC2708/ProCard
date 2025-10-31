@@ -235,19 +235,20 @@ fun AlimentacionScreen() {
                     onEditHistory = { showHistoryEditor = true }
                 )
             }
+            if (showHistoryEditor) {
+                HistoryEditDialog(
+                    history = previousHistory,
+                    onDismiss = { showHistoryEditor = false },
+                    onSave = { date, protein, fat, carbs, kcal ->
+                        viewModel.updateHistoryTotals(date, protein, fat, carbs, kcal)
+                        showHistoryEditor = false
+                    }
+                )
+            }
         }
     }
 
-    if (showHistoryEditor) {
-        HistoryEditDialog(
-            history = previousHistory,
-            onDismiss = { showHistoryEditor = false },
-            onSave = { date, protein, fat, carbs, kcal ->
-                viewModel.updateHistoryTotals(date, protein, fat, carbs, kcal)
-                showHistoryEditor = false
-            }
-        )
-    }
+
 
     if (showFoodDialog) {
         val otherNames = uiState.foods.filter { it.id != editingFood?.id }.map { it.name }

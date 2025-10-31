@@ -12,12 +12,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -25,7 +26,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberSnapFlingBehavior
+import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,7 +56,6 @@ import com.example.procard.navigation.NavRoute
 import com.example.procard.ui.components.AppHeader
 import com.example.procard.ui.components.EmptyState
 import com.example.procard.ui.components.ErrorBanner
-import androidx.compose.material3.surfaceColorAtElevation
 import kotlinx.coroutines.launch
 import kotlin.ranges.ClosedFloatingPointRange
 
@@ -102,10 +102,10 @@ fun RegistroScreen() {
     // Índice del día seleccionado dentro del gráfico. Se reinicia cuando cambia la lista.
     var selectedIndex by rememberSaveable { mutableIntStateOf(0) }
     LaunchedEffect(uiState.entries) {
-        if (uiState.entries.isNotEmpty()) {
-            selectedIndex = uiState.entries.lastIndex
+        selectedIndex = if (uiState.entries.isNotEmpty()) {
+            uiState.entries.lastIndex
         } else {
-            selectedIndex = 0
+            0
         }
     }
 
@@ -147,10 +147,11 @@ fun RegistroScreen() {
 
             when {
                 uiState.isEmpty -> EmptyState(
-                    title = "Sin datos recientes",
-                    actionText = "Registrar progreso"
-                ) {}
-
+                    message = "Sin datos recientes",
+                    cta = "Registrar progreso"
+                ) {
+                    // TODO: acción al pulsar CTA (navegar a registro, etc.)
+                }
                 else -> RegistroContent(
                     entries = uiState.entries,
                     selectedIndex = selectedIndex,
@@ -288,7 +289,11 @@ private fun RegistroChartCard(
             )
         }
         Spacer(modifier = Modifier.height(8.dp))
-        Text(entry.label, style = MaterialTheme.typography.bodyMedium, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+        Text(
+            entry.label,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+        )
     }
 }
 
