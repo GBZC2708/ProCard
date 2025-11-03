@@ -25,8 +25,8 @@ import androidx.compose.material.icons.rounded.MenuBook
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -52,7 +52,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -63,7 +62,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.procard.di.ServiceLocator
-import com.example.procard.model.ScreenState
 import com.example.procard.model.UserProfile
 import com.example.procard.model.alimentacion.DailyLog
 import com.example.procard.model.alimentacion.DailyLogItem
@@ -71,30 +69,30 @@ import com.example.procard.model.alimentacion.Food
 import com.example.procard.model.alimentacion.FoodForm
 import com.example.procard.model.alimentacion.FoodSortOption
 import com.example.procard.navigation.NavRoute
+import com.example.procard.ui.app.UserHeaderUiState
 import com.example.procard.ui.components.AppHeader
 import com.example.procard.ui.components.EmptyState
 import com.example.procard.ui.components.ErrorBanner
 import com.example.procard.ui.screens.alimentacion.components.FoodFormDialog
 import com.example.procard.ui.screens.alimentacion.components.QuantityDialog
 import java.util.Locale
-import kotlinx.coroutines.launch
 
 /** Pestañas disponibles en la pantalla. */
 enum class AlimentacionTab { Catalogo, Hoy }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AlimentacionScreen() {
+fun AlimentacionScreen(
+    userState: UserHeaderUiState,
+    onRetryUser: () -> Unit
+) {
     val context = LocalContext.current
     val repository = remember { ServiceLocator.alimentacionRepository(context) }
     val viewModel: AlimentacionViewModel = viewModel(factory = AlimentacionViewModel.Factory(repository))
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
 
-    val userRepository = remember { ServiceLocator.userRepository }
-    var user by remember { mutableStateOf<UserProfile?>(null) }
-    var headerState by remember { mutableStateOf(ScreenState(loading = true)) }
+    val user = userState.user ?: UserProfile("u-0", "", null)
 
     // Estados de la UI para diálogos y pestañas.
     var selectedTab by rememberSaveable { mutableStateOf(AlimentacionTab.Hoy) }
@@ -105,15 +103,6 @@ fun AlimentacionScreen() {
     var editItem by remember { mutableStateOf<DailyLogItem?>(null) }
     var pendingDeleteFood by remember { mutableStateOf<Food?>(null) }
     var showHistoryEditor by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        try {
-            user = userRepository.fetchUser()
-            headerState = ScreenState(loading = false)
-        } catch (error: Exception) {
-            headerState = ScreenState(loading = false, error = error.message ?: "Error desconocido")
-        }
-    }
 
     // Recolecta eventos del ViewModel para mostrar snackbars y manejar deshacer.
     LaunchedEffect(Unit) {
@@ -138,7 +127,7 @@ fun AlimentacionScreen() {
     Scaffold(
         topBar = {
             AppHeader(
-                user = user ?: UserProfile("u-0", "", null),
+                user = user,
                 title = NavRoute.Alimentacion.title,
                 subtitle = NavRoute.Alimentacion.subtitle
             )
@@ -162,22 +151,12 @@ fun AlimentacionScreen() {
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            if (headerState.loading || uiState.isLoading) {
+            if (userState.isLoading || uiState.isLoading) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
 
-            headerState.error?.let { message ->
-                ErrorBanner(message = message, onRetry = {
-                    headerState = ScreenState(loading = true)
-                    scope.launch {
-                        try {
-                            user = userRepository.fetchUser()
-                            headerState = ScreenState(loading = false)
-                        } catch (e: Exception) {
-                            headerState = ScreenState(loading = false, error = e.message ?: "Error desconocido")
-                        }
-                    }
-                })
+            userState.errorMessage?.let { message ->
+                ErrorBanner(message = message, onRetry = onRetryUser)
             }
 
             TabRow(selectedTabIndex = selectedTab.ordinal) {
@@ -358,8 +337,8 @@ private fun CatalogTab(
         if (uiState.foods.isEmpty()) {
             EmptyState(
                 message = "Aún no registras alimentos.",
-                cta = "Crear alimento",
-                onClick = onCreateFood
+                actionLabel = "Crear alimento",
+                onActionClick = onCreateFood
             )
         } else {
             LazyColumn(
@@ -455,8 +434,8 @@ private fun IngestaTab(
         if (log == null || log.items.isEmpty()) {
             EmptyState(
                 message = "Tu día está vacío. ¡Registra tu primera comida!",
-                cta = "Agregar desde Catálogo",
-                onClick = onOpenCatalog
+                actionLabel = "Agregar desde Catálogo",
+                onActionClick = onOpenCatalog
             )
         } else {
             LazyColumn(

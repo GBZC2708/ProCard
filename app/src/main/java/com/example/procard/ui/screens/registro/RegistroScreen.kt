@@ -31,11 +31,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,13 +47,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.procard.di.ServiceLocator
-import com.example.procard.model.ScreenState
 import com.example.procard.model.UserProfile
 import com.example.procard.navigation.NavRoute
+import com.example.procard.ui.app.UserHeaderUiState
 import com.example.procard.ui.components.AppHeader
 import com.example.procard.ui.components.EmptyState
 import com.example.procard.ui.components.ErrorBanner
-import kotlinx.coroutines.launch
 import kotlin.ranges.ClosedFloatingPointRange
 
 /** Ancho base para cada día dentro del gráfico con scroll. */
@@ -70,7 +66,10 @@ private val ChartHeight = 220.dp
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RegistroScreen() {
+fun RegistroScreen(
+    userState: UserHeaderUiState,
+    onRetryUser: () -> Unit
+) {
     val context = LocalContext.current
 
     // Repositorios compartidos obtenidos desde el ServiceLocator.
@@ -82,22 +81,7 @@ fun RegistroScreen() {
         factory = RegistroViewModel.Factory(progressRepository, alimentacionRepository)
     )
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val scope = rememberCoroutineScope()
-
-    // Información del usuario para personalizar el encabezado.
-    val userRepository = remember { ServiceLocator.userRepository }
-    var user by remember { mutableStateOf<UserProfile?>(null) }
-    var headerState by remember { mutableStateOf(ScreenState(loading = true)) }
-
-    // Recupera el usuario una sola vez cuando la pantalla se crea.
-    LaunchedEffect(Unit) {
-        try {
-            user = userRepository.fetchUser()
-            headerState = ScreenState(loading = false)
-        } catch (error: Exception) {
-            headerState = ScreenState(loading = false, error = error.message ?: "Error")
-        }
-    }
+    val user = userState.user ?: UserProfile("u-0", "", null)
 
     // Índice del día seleccionado dentro del gráfico. Se reinicia cuando cambia la lista.
     var selectedIndex by rememberSaveable { mutableIntStateOf(0) }
@@ -111,8 +95,8 @@ fun RegistroScreen() {
 
     Scaffold(
         topBar = {
-            AppHeader(
-                user = user ?: UserProfile("u-0", "", null),
+        AppHeader(
+                user = user,
                 title = NavRoute.Registro.title,
                 subtitle = NavRoute.Registro.subtitle
             )
@@ -123,22 +107,12 @@ fun RegistroScreen() {
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            if (headerState.loading || uiState.loading) {
+            if (userState.isLoading || uiState.loading) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
 
-            headerState.error?.let { message ->
-                ErrorBanner(message = message, onRetry = {
-                    scope.launch {
-                        headerState = ScreenState(loading = true)
-                        try {
-                            user = userRepository.fetchUser()
-                            headerState = ScreenState(loading = false)
-                        } catch (error: Exception) {
-                            headerState = ScreenState(loading = false, error = error.message ?: "Error")
-                        }
-                    }
-                })
+            userState.errorMessage?.let { message ->
+                ErrorBanner(message = message, onRetry = onRetryUser)
             }
 
             uiState.error?.let { message ->
@@ -148,10 +122,11 @@ fun RegistroScreen() {
             when {
                 uiState.isEmpty -> EmptyState(
                     message = "Sin datos recientes",
-                    cta = "Registrar progreso"
-                ) {
-                    // TODO: acción al pulsar CTA (navegar a registro, etc.)
-                }
+                    actionLabel = "Registrar progreso",
+                    onActionClick = {
+                        // TODO: acción al pulsar CTA (navegar a registro, etc.)
+                    }
+                )
                 else -> RegistroContent(
                     entries = uiState.entries,
                     selectedIndex = selectedIndex,

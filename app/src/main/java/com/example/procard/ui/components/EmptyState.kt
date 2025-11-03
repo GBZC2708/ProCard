@@ -10,14 +10,21 @@ import androidx.compose.ui.unit.dp
 
 
 @Composable
-fun EmptyState(message: String, cta: String, onClick: () -> Unit) {
+fun EmptyState(
+    message: String,
+    actionLabel: String,
+    onActionClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+        modifier = modifier
+            .fillMaxSize()
+            .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Text(message, style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(12.dp))
-        Button(onClick = onClick) { Text(cta) }
+        Button(onClick = onActionClick) { Text(actionLabel) }
     }
 }
