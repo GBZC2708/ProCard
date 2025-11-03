@@ -54,6 +54,10 @@ import com.example.procard.ui.components.AppHeader
 import com.example.procard.ui.components.EmptyState
 import com.example.procard.ui.components.ErrorBanner
 import kotlin.ranges.ClosedFloatingPointRange
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableIntStateOf
+
 
 /** Ancho base para cada día dentro del gráfico con scroll. */
 private val DayWidth = 140.dp

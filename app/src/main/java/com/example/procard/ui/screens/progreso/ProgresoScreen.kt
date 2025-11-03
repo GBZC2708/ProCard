@@ -1,14 +1,3 @@
-/*
- * Screen "Progreso" — Versión coronas concéntricas (28 anillos)
- * Cambios solicitados:
- *  - Letras del gráfico lineal: negro en modo claro y blanco en modo oscuro
- *  - Gráfico lineal: últimos 7 días incluyendo HOY
- *  - Gráfico circular: se ajusta al tamaño real del Canvas para verse completo (sin cambiar grosores/bordes)
- *  - CORRECCIÓN: limitar tamaño visible del gráfico circular para que no se recorte en su sección
- *  - NUEVO: la sección del gráfico circular calcula su tamaño y agrega espaciado dinámico para que se vea el título y el botón "Hoy"
- *  - AJUSTE: aumentar separación entre el título “Últimas 4 semanas / 28 días”, el gráfico circular y el botón "Hoy"
- */
-
 package com.example.procard.ui.screens.progreso
 
 import android.graphics.Paint
@@ -75,10 +64,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -268,7 +259,9 @@ private fun ProgressContent(
                 OutlinedTextField(
                     value = weightInput,
                     onValueChange = { newValue ->
-                        weightInput = newValue.filter { it.isDigit() || it == '.' || it == ',' }.replace(',', '.')
+                        // String.filter { Char -> ... } → devuelve String (OK)
+                        weightInput = newValue.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
+                            .replace(',', '.')
                     },
                     label = { Text("Peso de hoy:") },
                     placeholder = { Text("no hay registro de hoy") },
@@ -436,7 +429,7 @@ private fun ProgressContent(
         )
     }
 
-    // Editor de color+nota — usa scope/haptics capturados (sin invocar composables aquí)
+    // Editor de color+nota
     editorDate?.let { date ->
         DayEditorDialog(
             date = date,
@@ -455,7 +448,7 @@ private fun ProgressContent(
         )
     }
 
-    // Diálogo para editar pesos anteriores — usa la MISMA variable showWeightEditor
+    // Diálogo para editar pesos anteriores
     if (showWeightEditor) {
         WeightEditorDialog(
             initialDate = today.minusDays(1),
@@ -988,8 +981,10 @@ private fun WeightEditorDialog(
         )
     }
     var input by remember {
-        mutableStateOf(initialWeight?.let { String.format(Locale("es", "PE"), "%.2f", it) }
-            ?: (weights[date]?.let { String.format(Locale("es", "PE"), "%.2f", it) } ?: ""))
+        mutableStateOf(
+            initialWeight?.let { String.format(Locale("es", "PE"), "%.2f", it) }
+                ?: (weights[date]?.let { String.format(Locale("es", "PE"), "%.2f", it) } ?: "")
+        )
     }
     var error by remember { mutableStateOf<String?>(null) }
 
