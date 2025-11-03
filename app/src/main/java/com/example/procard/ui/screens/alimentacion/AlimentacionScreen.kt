@@ -230,7 +230,6 @@ fun AlimentacionScreen() {
                     onDeleteItem = viewModel::deleteLogItem,
                     onSaveDay = viewModel::saveToday,
                     onOpenCatalog = { selectedTab = AlimentacionTab.Catalogo },
-                    onDuplicateFromHistory = viewModel::duplicateFromHistory,
                     previousHistory = previousHistory,
                     onEditHistory = { showHistoryEditor = true }
                 )
@@ -448,7 +447,6 @@ private fun IngestaTab(
     onDeleteItem: (Long) -> Unit,
     onSaveDay: () -> Unit,
     onOpenCatalog: () -> Unit,
-    onDuplicateFromHistory: (String) -> Unit,
     previousHistory: List<DailyLog>,
     onEditHistory: () -> Unit
 ) {
@@ -484,10 +482,6 @@ private fun IngestaTab(
             onEditPrevious = onEditHistory
         )
 
-        HistorySection(
-            history = previousHistory,
-            onDuplicate = onDuplicateFromHistory
-        )
     }
 }
 
@@ -573,38 +567,6 @@ private fun SummaryFooter(
                 style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier.padding(top = 8.dp)
             )
-        }
-    }
-}
-
-/**
- * Sección de historial con opción para duplicar registros.
- */
-@Composable
-private fun HistorySection(history: List<DailyLog>, onDuplicate: (String) -> Unit) {
-    if (history.isEmpty()) return
-    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-        Text("Historial reciente", style = MaterialTheme.typography.titleMedium)
-        Spacer(modifier = Modifier.height(8.dp))
-        history.forEach { log ->
-            Card(modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 4.dp)) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(log.date, style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                        MacroColumn("Proteínas", log.totalProtein)
-                        MacroColumn("Grasas", log.totalFat)
-                        MacroColumn("Carbos", log.totalCarbs)
-                        MacroColumn("Kcal", log.totalKcal, suffix = "kcal", decimals = 0)
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    OutlinedButton(onClick = { onDuplicate(log.date) }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Duplicar para hoy")
-                    }
-                }
-            }
         }
     }
 }
