@@ -52,7 +52,6 @@ import androidx.compose.material3.TextButton
 // OJO: eliminamos el import de rememberSnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -67,7 +66,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.procard.di.ServiceLocator
-import com.example.procard.model.ScreenState
 import com.example.procard.model.UserProfile
 import com.example.procard.model.entrenamiento.CardioLog
 import com.example.procard.model.entrenamiento.CardioPlan
@@ -84,13 +82,18 @@ import com.example.procard.model.entrenamiento.TrainingDayDetail
 import com.example.procard.model.entrenamiento.TrainingWeek
 import com.example.procard.model.entrenamiento.WeeklyMetrics
 import com.example.procard.navigation.NavRoute
+import com.example.procard.ui.app.UserHeaderUiState
 import com.example.procard.ui.components.AppHeader
 import com.example.procard.ui.components.ErrorBanner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import java.time.format.DateTimeFormatter
 
 @Composable
-fun EntrenamientoScreen() {
+fun EntrenamientoScreen(
+    userState: UserHeaderUiState,
+    onRetryUser: () -> Unit
+) {
     val context = LocalContext.current
     val trainingRepository = remember(context.applicationContext) {
         ServiceLocator.trainingRepository(context)
@@ -98,20 +101,7 @@ fun EntrenamientoScreen() {
     val viewModel: EntrenamientoViewModel = viewModel(
         factory = EntrenamientoViewModel.provideFactory(trainingRepository)
     )
-    val repo = ServiceLocator.userRepository
-    var user by remember { mutableStateOf<UserProfile?>(null) }
-    var screenState by remember { mutableStateOf(ScreenState(loading = true)) }
-
-    LaunchedEffect(Unit) {
-        try {
-            user = repo.fetchUser()
-            screenState = ScreenState(loading = false)
-        } catch (e: Exception) {
-            screenState = ScreenState(loading = false, error = e.message ?: "Error")
-        }
-    }
-
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     // Reemplazo seguro compatible con todas las versiones:
     val snackbarHost: SnackbarHostState = remember { SnackbarHostState() }
@@ -134,7 +124,7 @@ fun EntrenamientoScreen() {
     Scaffold(
         topBar = {
             AppHeader(
-                user = user ?: UserProfile("u-0", "", null),
+                user = userState.user ?: UserProfile("u-0", "", null),
                 title = NavRoute.Entrenamiento.title,
                 subtitle = NavRoute.Entrenamiento.subtitle
             )
@@ -146,10 +136,10 @@ fun EntrenamientoScreen() {
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            if (screenState.loading || uiState.loading) {
+            if (userState.isLoading || uiState.loading) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
-            screenState.error?.let { ErrorBanner(it) { } }
+            userState.errorMessage?.let { ErrorBanner(it, onRetry = onRetryUser) }
             uiState.error?.let { ErrorBanner(it) { } }
 
             WeeklyOverview(

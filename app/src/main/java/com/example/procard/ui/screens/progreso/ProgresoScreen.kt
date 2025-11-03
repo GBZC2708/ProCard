@@ -75,12 +75,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -104,9 +102,9 @@ import com.example.procard.di.ServiceLocator
 import com.example.procard.model.DayColor
 import com.example.procard.model.ProgressSnapshot
 import com.example.procard.model.ProgressStage
-import com.example.procard.model.ScreenState
 import com.example.procard.model.UserProfile
 import com.example.procard.navigation.NavRoute
+import com.example.procard.ui.app.UserHeaderUiState
 import com.example.procard.ui.components.AppHeader
 import com.example.procard.ui.components.ErrorBanner
 import kotlinx.coroutines.delay
@@ -124,32 +122,24 @@ import kotlin.math.sin
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProgresoScreen() {
+fun ProgresoScreen(
+    userState: UserHeaderUiState,
+    onRetryUser: () -> Unit
+) {
     val context = LocalContext.current
     val progressRepository = remember { ServiceLocator.progressRepository(context) }
-    val snapshot by progressRepository.observe().collectAsState(initial = ProgressSnapshot())
-
-    val userRepo = remember { ServiceLocator.userRepository }
-    var user by remember { mutableStateOf<UserProfile?>(null) }
-    var screenState by remember { mutableStateOf(ScreenState(loading = true)) }
+    val snapshot by progressRepository
+        .observe()
+        .collectAsStateWithLifecycle(initialValue = ProgressSnapshot())
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    LaunchedEffect(Unit) {
-        scope.launch {
-            try {
-                user = userRepo.fetchUser()
-                screenState = ScreenState(loading = false)
-            } catch (e: Exception) {
-                screenState = ScreenState(loading = false, error = e.message ?: "Error desconocido")
-            }
-        }
-    }
+    val user = userState.user ?: UserProfile("u-0", "", null)
 
     Scaffold(
         topBar = {
             AppHeader(
-                user = user ?: UserProfile("u-0", "", null),
+                user = user,
                 title = NavRoute.Progreso.title,
                 subtitle = NavRoute.Progreso.subtitle
             )
@@ -161,25 +151,12 @@ fun ProgresoScreen() {
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            if (screenState.loading) {
+            if (userState.isLoading) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
 
-            screenState.error?.let { message ->
-                ErrorBanner(
-                    message = message,
-                    onRetry = {
-                        screenState = ScreenState(loading = true)
-                        scope.launch {
-                            try {
-                                user = userRepo.fetchUser()
-                                screenState = ScreenState(loading = false)
-                            } catch (e: Exception) {
-                                screenState = ScreenState(loading = false, error = e.message ?: "Error desconocido")
-                            }
-                        }
-                    }
-                )
+            userState.errorMessage?.let { message ->
+                ErrorBanner(message = message, onRetry = onRetryUser)
             }
 
             ProgressContent(
