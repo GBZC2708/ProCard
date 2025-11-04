@@ -7,6 +7,8 @@ import com.example.procard.data.ProgressRepository
 import com.example.procard.data.ThemeRepository
 import com.example.procard.data.TrainingRepository
 import com.example.procard.data.UserRepository
+import com.example.procard.data.suplementacion.SuplementacionDatabase
+import com.example.procard.data.suplementacion.SuplementacionRepository
 
 object ServiceLocator {
     private var progressRepo: ProgressRepository? = null
@@ -14,6 +16,8 @@ object ServiceLocator {
     private var alimentacionRepo: AlimentacionRepository? = null
     private var alimentacionDb: AlimentacionDatabase? = null
     private var trainingRepo: TrainingRepository? = null
+    private var suplementacionRepo: SuplementacionRepository? = null
+    private var suplementacionDb: SuplementacionDatabase? = null
 
     val userRepository by lazy { UserRepository() }
 
@@ -39,6 +43,16 @@ object ServiceLocator {
         if (existing != null) return existing
         val repo = AlimentacionRepository(database, database.alimentacionDao())
         alimentacionRepo = repo
+        return repo
+    }
+
+    fun suplementacionRepository(context: Context): SuplementacionRepository {
+        val appContext = context.applicationContext
+        val database = suplementacionDb ?: SuplementacionDatabase.getInstance(appContext).also { suplementacionDb = it }
+        val existing = suplementacionRepo
+        if (existing != null) return existing
+        val repo = SuplementacionRepository(database, database.suplementacionDao())
+        suplementacionRepo = repo
         return repo
     }
 }
