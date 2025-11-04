@@ -210,7 +210,8 @@ fun AlimentacionScreen(
                     onSaveDay = viewModel::saveToday,
                     onOpenCatalog = { selectedTab = AlimentacionTab.Catalogo },
                     previousHistory = previousHistory,
-                    onEditHistory = { showHistoryEditor = true }
+                    onEditHistory = { showHistoryEditor = true },
+                    onDuplicatePrevious = { date -> viewModel.duplicateFromHistory(date) }
                 )
             }
             if (showHistoryEditor) {
@@ -427,10 +428,44 @@ private fun IngestaTab(
     onSaveDay: () -> Unit,
     onOpenCatalog: () -> Unit,
     previousHistory: List<DailyLog>,
-    onEditHistory: () -> Unit
+    onEditHistory: () -> Unit,
+    onDuplicatePrevious: (String) -> Unit
 ) {
     val log = uiState.dailyLog
     Column(modifier = Modifier.fillMaxSize()) {
+        val latestPrevious = previousHistory.firstOrNull()
+        val showDuplicateButton = (log == null || log.items.isEmpty()) && latestPrevious != null
+
+        // Muestra el botón de duplicar cuando no hay registros hoy y existe historial.
+        if (showDuplicateButton) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                Text(
+                    text = "¿Quieres ahorrar tiempo?",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = { latestPrevious?.let { onDuplicatePrevious(it.date) } },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Rounded.ContentCopy, contentDescription = null)
+                    Spacer(modifier = Modifier.size(8.dp))
+                    Text("Duplicar día anterior")
+                }
+                latestPrevious?.let { previous ->
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Se copiará lo registrado el ${previous.date}.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        }
+
         if (log == null || log.items.isEmpty()) {
             EmptyState(
                 message = "Tu día está vacío. ¡Registra tu primera comida!",
