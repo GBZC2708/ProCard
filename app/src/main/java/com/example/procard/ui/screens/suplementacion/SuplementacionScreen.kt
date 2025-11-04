@@ -34,6 +34,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -55,9 +56,6 @@ import com.example.procard.ui.components.EmptyState
 import com.example.procard.ui.components.ErrorBanner
 import com.example.procard.ui.screens.suplementacion.components.SupplementFormDialog
 
-/**
- * Pantalla principal para gestionar la suplementación diaria del usuario.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SuplementacionScreen(
@@ -72,15 +70,19 @@ fun SuplementacionScreen(
 
     val user = userState.user ?: UserProfile("u-0", "", null)
 
-    // Estado del diálogo de formulario para crear o editar suplementos.
+    // Dialog/form state
     var showForm by rememberSaveable { mutableStateOf(false) }
     var editingId by rememberSaveable { mutableStateOf<Long?>(null) }
-    var formData by rememberSaveable(stateSaver = SupplementFormSaver) { SupplementForm() }
 
-    // Almacena el elemento pendiente de borrar para confirmar con el usuario.
+    // IMPORTANT: rememberSaveable must store a MutableState when used with `by`
+    var formData by rememberSaveable(stateSaver = SupplementFormSaver) {
+        mutableStateOf(SupplementForm())
+    }
+
+    // Pending delete confirmation
     var pendingDelete by remember { mutableStateOf<SupplementItem?>(null) }
 
-    // Reacciona a eventos emitidos por el ViewModel mostrando snackbars.
+    // ViewModel one-shot events -> snackbars
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
@@ -191,9 +193,6 @@ fun SuplementacionScreen(
     }
 }
 
-/**
- * Tarjeta que muestra la información de cada suplemento de la lista.
- */
 @Composable
 private fun SupplementCard(
     item: SupplementItem,
@@ -202,7 +201,9 @@ private fun SupplementCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp))
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp)
+        )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
@@ -223,9 +224,6 @@ private fun SupplementCard(
     }
 }
 
-/**
- * Fila reutilizable con los iconos de edición y eliminación.
- */
 @Composable
 private fun RowActions(onEdit: () -> Unit, onDelete: () -> Unit) {
     androidx.compose.foundation.layout.Row(
@@ -238,21 +236,24 @@ private fun RowActions(onEdit: () -> Unit, onDelete: () -> Unit) {
 }
 
 /** Saver para recordar el formulario en recreaciones del proceso. */
-private val SupplementFormSaver = androidx.compose.runtime.saveable.Saver<SupplementForm, Map<String, String>>(
-    save = { form ->
-        mapOf(
-            "moment" to form.moment.name,
-            "name" to form.name,
-            "quantity" to form.quantity,
-            "unit" to form.unit
-        )
-    },
-    restore = { map ->
-        SupplementForm(
-            moment = SupplementMoment.fromKey(map["moment"] ?: SupplementMoment.EnAyunas.name),
-            name = map["name"] ?: "",
-            quantity = map["quantity"] ?: "",
-            unit = map["unit"] ?: "caps"
-        )
-    }
-)
+private val SupplementFormSaver: Saver<SupplementForm, Map<String, String>> =
+    Saver(
+        save = { form ->
+            mapOf(
+                "moment" to form.moment.name,
+                "name" to form.name,
+                "quantity" to form.quantity,
+                "unit" to form.unit
+            )
+        },
+        restore = { map ->
+            SupplementForm(
+                moment = SupplementMoment.fromKey(
+                    map["moment"] ?: SupplementMoment.EnAyunas.name
+                ),
+                name = map["name"] ?: "",
+                quantity = map["quantity"] ?: "",
+                unit = map["unit"] ?: "caps"
+            )
+        }
+    )

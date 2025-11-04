@@ -1,35 +1,36 @@
 package com.example.procard.ui.screens.suplementacion.components
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenu
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.KeyboardOptions
+// NOTE: Use foundation.text.KeyboardOptions for broader Compose version support
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.procard.model.suplementacion.SupplementForm
 import com.example.procard.model.suplementacion.SupplementMoment
 
 /**
- * Diálogo reutilizable para capturar la información de un suplemento.
+ * Diálogo de formulario para crear/editar un suplemento.
+ * Recibe un valor inicial y maneja su propio estado interno.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,101 +40,127 @@ fun SupplementFormDialog(
     onDismiss: () -> Unit,
     onConfirm: (SupplementForm) -> Unit
 ) {
-    var selectedMoment by rememberSaveable { mutableStateOf(initialForm.moment) }
-    var expandMoment by remember { mutableStateOf(false) }
-    var name by rememberSaveable { mutableStateOf(initialForm.name) }
-    var quantity by rememberSaveable { mutableStateOf(initialForm.quantity) }
-    var unit by rememberSaveable { mutableStateOf(initialForm.unit) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var momentExpanded by remember { mutableStateOf(false) }
+    var unitExpanded by remember { mutableStateOf(false) }
 
-    LaunchedEffect(initialForm) {
-        selectedMoment = initialForm.moment
-        name = initialForm.name
-        quantity = initialForm.quantity
-        unit = initialForm.unit
-        errorMessage = null
-    }
+    var moment by remember { mutableStateOf(initialForm.moment) }
+    var name by remember { mutableStateOf(initialForm.name) }
+    var quantity by remember { mutableStateOf(initialForm.quantity) }
+    var unit by remember { mutableStateOf(initialForm.unit) }
+
+    val allMoments = SupplementMoment.values().toList()
+    val allUnits = listOf("caps", "tabs", "g", "mg", "ml", "scoops")
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(title) },
+        title = { Text(text = title) },
         text = {
-            Column {
-                Text("Momento del día")
-                Spacer(modifier = Modifier.height(4.dp))
-                ExposedDropdownMenuBox(expanded = expandMoment, onExpandedChange = { expandMoment = it }) {
-                    OutlinedTextField(
-                        value = selectedMoment.displayName,
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.padding(top = 4.dp)
+            ) {
+                // Momento (dropdown)
+                ExposedDropdownMenuBox(
+                    expanded = momentExpanded,
+                    onExpandedChange = { momentExpanded = !momentExpanded }
+                ) {
+                    TextField(
+                        modifier = Modifier
+                            .menuAnchor()
+                            .fillMaxWidth(),
+                        value = moment.displayName,
                         onValueChange = {},
-                        modifier = Modifier.fillMaxWidth(),
                         readOnly = true,
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandMoment) }
+                        label = { Text("Momento") },
+                        trailingIcon = {
+                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = momentExpanded)
+                        }
                     )
-                    ExposedDropdownMenu(expanded = expandMoment, onDismissRequest = { expandMoment = false }) {
-                        SupplementMoment.entries.forEach { moment ->
+                    ExposedDropdownMenu(
+                        expanded = momentExpanded,
+                        onDismissRequest = { momentExpanded = false }
+                    ) {
+                        allMoments.forEach { m ->
                             DropdownMenuItem(
-                                text = { Text(moment.displayName) },
+                                text = { Text(m.displayName) },
                                 onClick = {
-                                    selectedMoment = moment
-                                    expandMoment = false
+                                    moment = m
+                                    momentExpanded = false
                                 }
                             )
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(12.dp))
+
+                // Nombre
                 OutlinedTextField(
+                    modifier = Modifier.fillMaxWidth(),
                     value = name,
                     onValueChange = { name = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Nombre del suplemento") }
+                    label = { Text("Nombre del suplemento") },
+                    singleLine = true
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+
+                // Cantidad
                 OutlinedTextField(
+                    modifier = Modifier.fillMaxWidth(),
                     value = quantity,
                     onValueChange = { quantity = it },
-                    modifier = Modifier.fillMaxWidth(),
                     label = { Text("Cantidad") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
-                Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = unit,
-                    onValueChange = { unit = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Unidad") }
-                )
-                errorMessage?.let { message ->
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = message, color = MaterialTheme.colorScheme.error)
+
+                // Unidad (dropdown)
+                ExposedDropdownMenuBox(
+                    expanded = unitExpanded,
+                    onExpandedChange = { unitExpanded = !unitExpanded }
+                ) {
+                    TextField(
+                        modifier = Modifier
+                            .menuAnchor()
+                            .fillMaxWidth(),
+                        value = unit,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Unidad") },
+                        trailingIcon = {
+                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = unitExpanded)
+                        }
+                    )
+                    ExposedDropdownMenu(
+                        expanded = unitExpanded,
+                        onDismissRequest = { unitExpanded = false }
+                    ) {
+                        allUnits.forEach { u ->
+                            DropdownMenuItem(
+                                text = { Text(u) },
+                                onClick = {
+                                    unit = u
+                                    unitExpanded = false
+                                }
+                            )
+                        }
+                    }
                 }
+
+                Spacer(modifier = Modifier.height(4.dp))
             }
         },
         confirmButton = {
-            TextButton(onClick = {
-                val trimmedName = name.trim()
-                if (trimmedName.isEmpty()) {
-                    errorMessage = "Ingresa un nombre válido"
-                    return@TextButton
-                }
-                val parsedQuantity = quantity.replace(',', '.').toDoubleOrNull()
-                if (parsedQuantity == null || parsedQuantity < 0.0) {
-                    errorMessage = "Cantidad inválida"
-                    return@TextButton
-                }
-                val finalUnit = unit.ifBlank { "unidad" }
-                errorMessage = null
-                onConfirm(
-                    SupplementForm(
-                        moment = selectedMoment,
-                        name = trimmedName,
-                        quantity = quantity,
-                        unit = finalUnit
+            TextButton(
+                onClick = {
+                    val q = quantity.trim()
+                    onConfirm(
+                        SupplementForm(
+                            moment = moment,
+                            name = name.trim(),
+                            quantity = q,
+                            unit = unit.trim()
+                        )
                     )
-                )
-            }) {
-                Text("Guardar")
-            }
+                }
+            ) { Text("Guardar") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancelar") }
