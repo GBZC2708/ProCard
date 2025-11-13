@@ -9,8 +9,8 @@ sealed class NavRoute(val route: String, val title: String, val subtitle: String
     data object Entrenamiento : NavRoute("/entrenamiento", "Rutina de hoy", "Series, repeticiones y cargas.", "Entrenamiento")
     data object Registro : NavRoute(
         route = "/registro",
-        title = "Registro semanal",
-        subtitle = "Peso y alimentación de los últimos días.",
+        title = "Registro diario",
+        subtitle = "Revisa metas y hábitos del día.",
         label = "Registro"
     )
 
