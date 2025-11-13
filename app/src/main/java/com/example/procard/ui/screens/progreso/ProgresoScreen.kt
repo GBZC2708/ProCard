@@ -97,6 +97,7 @@ import com.example.procard.model.UserProfile
 import com.example.procard.navigation.NavRoute
 import com.example.procard.ui.app.UserHeaderUiState
 import com.example.procard.ui.components.AppHeader
+import com.example.procard.ui.components.ProgressCircleLast28Days
 import com.example.procard.ui.components.ErrorBanner
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -368,7 +369,7 @@ private fun ProgressContent(
 
                     Spacer(Modifier.height(topPad))
 
-                    ConcentricCrowns(
+                    ProgressCircleLast28Days(
                         today = today,
                         snapshot = snapshot,
                         isDark = isDark,
@@ -635,125 +636,6 @@ private fun WeightHistoryChart(entries: List<Pair<LocalDate, Double>>, isDark: B
 }
 
 /* --------------------- Coronas concéntricas (28 anillos + disco central) --------------------- */
-@Composable
-private fun ConcentricCrowns(
-    today: LocalDate,
-    snapshot: ProgressSnapshot,
-    isDark: Boolean,
-    onRingSelected: (LocalDate) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val pulse = remember { Animatable(1f) }
-    LaunchedEffect(snapshot.dayStatuses) {
-        pulse.snapTo(0.94f)
-        pulse.animateTo(1f, animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing))
-    }
-
-    val days: List<LocalDate> = remember(today) { (0..27).map { today.minusDays(it.toLong()) } }
-
-    val animFractions: List<Float> = days.map {
-        val v by animateFloatAsState(
-            targetValue = 1f,
-            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy)
-        )
-        v
-    }
-
-    BoxWithConstraints(
-        modifier = modifier
-            .semantics { contentDescription = "Gráfico de 28 anillos (coronas concéntricas)" }
-    ) {
-        val density = LocalDensity.current
-        val outlineColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)
-        val gapPx = with(density) { 2.dp.toPx() }
-        val paddingPx = with(density) { 16.dp.toPx() }
-        val totalRings = 28
-
-        Canvas(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(12.dp)
-        ) {
-            val minDim = min(size.width, size.height)
-            val centerX = size.width / 2f
-            val centerY = size.height / 2f
-            val availableRadius = (minDim / 2f - paddingPx) * pulse.value
-
-            val ringThickness = ((availableRadius - gapPx * (totalRings - 1)) / totalRings)
-                .coerceAtLeast(with(density) { 6.dp.toPx() })
-
-            // Disco central (hoy)
-            run {
-                val date = days.first()
-                val status = snapshot.dayStatuses[date] ?: DayColor.ROJO
-                val fillColor = status.resolveColor(isDark)
-                val radius = ringThickness
-
-                drawCircle(
-                    color = fillColor.copy(alpha = animFractions.first()),
-                    radius = radius,
-                    center = androidx.compose.ui.geometry.Offset(centerX, centerY)
-                )
-                drawCircle(
-                    color = outlineColor,
-                    radius = radius,
-                    center = androidx.compose.ui.geometry.Offset(centerX, centerY),
-                    style = Stroke(width = with(density) { 1.dp.toPx() })
-                )
-            }
-
-            // Anillos 1..27
-            for (index in 1 until totalRings) {
-                val date = days[index]
-                val status = snapshot.dayStatuses[date] ?: DayColor.ROJO
-                val color = status.resolveColor(isDark).copy(alpha = animFractions[index])
-
-                val innerRadius = index * (ringThickness + gapPx)
-                val radius = innerRadius + ringThickness / 2f
-
-                drawArc(
-                    color = color,
-                    startAngle = -90f,
-                    sweepAngle = 360f,
-                    useCenter = false,
-                    topLeft = androidx.compose.ui.geometry.Offset(centerX - radius, centerY - radius),
-                    size = androidx.compose.ui.geometry.Size(radius * 2f, radius * 2f),
-                    style = Stroke(width = ringThickness, cap = StrokeCap.Butt)
-                )
-
-                val borderRadius = radius + ringThickness / 2f
-                drawArc(
-                    color = outlineColor,
-                    startAngle = -90f,
-                    sweepAngle = 360f,
-                    useCenter = false,
-                    topLeft = androidx.compose.ui.geometry.Offset(centerX - borderRadius, centerY - borderRadius),
-                    size = androidx.compose.ui.geometry.Size(borderRadius * 2f, borderRadius * 2f),
-                    style = Stroke(width = with(density) { 1.dp.toPx() }, cap = StrokeCap.Butt)
-                )
-
-                // Tick de nota a las 12
-                if (snapshot.notes.containsKey(date)) {
-                    val theta = (-90f * (PI / 180f)).toFloat()
-                    val inner = radius - ringThickness / 2f + ringThickness * 0.2f
-                    val outer = radius + ringThickness / 2f - ringThickness * 0.2f
-                    val x1 = centerX + inner * cos(theta)
-                    val y1 = centerY + inner * sin(theta)
-                    val x2 = centerX + outer * cos(theta)
-                    val y2 = centerY + outer * sin(theta)
-                    drawLine(
-                        color = outlineColor,
-                        start = androidx.compose.ui.geometry.Offset(x1, y1),
-                        end = androidx.compose.ui.geometry.Offset(x2, y2),
-                        strokeWidth = with(density) { 2.dp.toPx() },
-                        cap = StrokeCap.Round
-                    )
-                }
-            }
-        }
-    }
-}
-
 /* --------------------- Calendario con leyenda R/A/V --------------------- */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable

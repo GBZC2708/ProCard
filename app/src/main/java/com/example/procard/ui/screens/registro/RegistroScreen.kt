@@ -2,12 +2,15 @@ package com.example.procard.ui.screens.registro
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -17,32 +20,48 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.DirectionsWalk
+import androidx.compose.material.icons.rounded.FitnessCenter
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.surfaceColorAtElevation
+import androidx.compose.material3.TextField
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -53,21 +72,15 @@ import com.example.procard.ui.app.UserHeaderUiState
 import com.example.procard.ui.components.AppHeader
 import com.example.procard.ui.components.EmptyState
 import com.example.procard.ui.components.ErrorBanner
-import kotlin.ranges.ClosedFloatingPointRange
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableIntStateOf
+import com.example.procard.ui.components.ProgressCircleLast28Days
+import java.text.NumberFormat
+import java.util.Locale
+import androidx.compose.material3.Icon
+import com.example.procard.model.ProgressSnapshot
 
-
-/** Ancho base para cada día dentro del gráfico con scroll. */
 private val DayWidth = 140.dp
-
-/** Alto base del gráfico. */
 private val ChartHeight = 220.dp
 
-/**
- * Pantalla de Registro que combina el progreso de peso y alimentación.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RegistroScreen(
@@ -75,31 +88,23 @@ fun RegistroScreen(
     onRetryUser: () -> Unit
 ) {
     val context = LocalContext.current
-
-    // Repositorios compartidos obtenidos desde el ServiceLocator.
     val progressRepository = remember { ServiceLocator.progressRepository(context) }
     val alimentacionRepository = remember { ServiceLocator.alimentacionRepository(context) }
 
-    // ViewModel que expone el estado reactivo de la pantalla.
     val viewModel: RegistroViewModel = viewModel(
         factory = RegistroViewModel.Factory(progressRepository, alimentacionRepository)
     )
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val user = userState.user ?: UserProfile("u-0", "", null)
 
-    // Índice del día seleccionado dentro del gráfico. Se reinicia cuando cambia la lista.
     var selectedIndex by rememberSaveable { mutableIntStateOf(0) }
     LaunchedEffect(uiState.entries) {
-        selectedIndex = if (uiState.entries.isNotEmpty()) {
-            uiState.entries.lastIndex
-        } else {
-            0
-        }
+        selectedIndex = if (uiState.entries.isNotEmpty()) uiState.entries.lastIndex else 0
     }
 
     Scaffold(
         topBar = {
-        AppHeader(
+            AppHeader(
                 user = user,
                 title = NavRoute.Registro.title,
                 subtitle = NavRoute.Registro.subtitle
@@ -123,51 +128,372 @@ fun RegistroScreen(
                 ErrorBanner(message = message, onRetry = { })
             }
 
-            when {
-                uiState.isEmpty -> EmptyState(
-                    message = "Sin datos recientes",
-                    actionLabel = "Registrar progreso",
-                    onActionClick = {
-                        // TODO: acción al pulsar CTA (navegar a registro, etc.)
-                    }
+            val scrollState = rememberScrollState()
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                RegistroDailyHeader(
+                    state = uiState.daily,
+                    onDayTypeSelected = viewModel::onDayTypeSelected,
+                    onPhaseSelected = viewModel::onPhaseSelected
                 )
-                else -> RegistroContent(
-                    entries = uiState.entries,
-                    selectedIndex = selectedIndex,
-                    onSelect = { selectedIndex = it },
-                    modifier = Modifier.weight(1f)
+
+                RegistroStepsCard(
+                    state = uiState.daily,
+                    onToggleTracking = viewModel::onToggleStepTracking
+                )
+
+                RegistroWeightCard(
+                    state = uiState.daily,
+                    onWeightChange = viewModel::onWeightChanged
+                )
+
+                RegistroTrainingCard(
+                    state = uiState.daily,
+                    onCardioMinutesChange = viewModel::onCardioMinutesChange,
+                    onCardioCompletedChange = viewModel::onCardioCompletedChange,
+                    onGymTrainedChange = viewModel::onGymTrainedChange
+                )
+
+                RegistroHydrationCard(
+                    state = uiState.daily,
+                    onWaterGoalChange = viewModel::onWaterGoalChange,
+                    onWaterDelta = viewModel::onWaterDelta,
+                    onSaltGoalChange = viewModel::onSaltGoalChange,
+                    onSaltDelta = viewModel::onSaltDelta,
+                    onSaltOkChange = viewModel::onSaltOkChange
+                )
+
+                RegistroNutritionCard(
+                    state = uiState.daily,
+                    onCaloriesPlanChange = viewModel::onCaloriesPlanChange,
+                    onSupplementationChange = viewModel::onSupplementationChange
+                )
+
+                RegistroProgressCard(progress = uiState.progress)
+
+                if (uiState.entries.isNotEmpty()) {
+                    RegistroHistoryCard(
+                        entries = uiState.entries,
+                        selectedIndex = selectedIndex,
+                        onSelect = { selectedIndex = it }
+                    )
+                } else if (!uiState.loading) {
+                    EmptyState(
+                        message = "Sin datos recientes",
+                        actionLabel = "Registrar progreso",
+                        onActionClick = {}
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RegistroDailyHeader(
+    state: RegistroDailyUiState,
+    onDayTypeSelected: (RegistroDayType) -> Unit,
+    onPhaseSelected: (RegistroTrainingPhase) -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp))
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(state.formattedDate, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = state.dayType == RegistroDayType.ENTRENO,
+                    onClick = { onDayTypeSelected(RegistroDayType.ENTRENO) },
+                    label = { Text("Día de entreno") }
+                )
+                FilterChip(
+                    selected = state.dayType == RegistroDayType.DESCANSO,
+                    onClick = { onDayTypeSelected(RegistroDayType.DESCANSO) },
+                    label = { Text("Día de descanso") }
+                )
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                RegistroTrainingPhase.values().forEach { phase ->
+                    val label = when (phase) {
+                        RegistroTrainingPhase.DEFINICION -> "DEFINICIÓN"
+                        RegistroTrainingPhase.MANTENIMIENTO -> "MANTENIMIENTO"
+                        RegistroTrainingPhase.VOLUMEN -> "VOLUMEN"
+                    }
+                    FilterChip(
+                        selected = state.phase == phase,
+                        onClick = { onPhaseSelected(phase) },
+                        label = { Text(label) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RegistroStepsCard(
+    state: RegistroDailyUiState,
+    onToggleTracking: () -> Unit
+) {
+    val steps = NumberFormat.getIntegerInstance(Locale.getDefault()).format(state.steps)
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(imageVector = Icons.Rounded.DirectionsWalk, contentDescription = null)
+                Text("Pasos de hoy", style = MaterialTheme.typography.titleMedium)
+            }
+            Text(steps, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.SemiBold)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(onClick = onToggleTracking, colors = ButtonDefaults.filledTonalButtonColors()) {
+                    Icon(
+                        imageVector = if (state.isTrackingSteps) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                        contentDescription = null
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(if (state.isTrackingSteps) "Pausar" else "Iniciar")
+                }
+                Text(
+                    text = if (state.isTrackingSteps) "Contando…" else "En pausa",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
             }
         }
     }
 }
 
-/**
- * Contenedor principal con gráfico, leyendas y detalle del día seleccionado.
- */
 @Composable
-private fun RegistroContent(
-    entries: List<RegistroDayEntry>,
-    selectedIndex: Int,
-    onSelect: (Int) -> Unit,
-    modifier: Modifier = Modifier
+private fun RegistroWeightCard(
+    state: RegistroDailyUiState,
+    onWeightChange: (String) -> Unit
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp))
     ) {
-        RegistroLegend()
-        Spacer(modifier = Modifier.height(16.dp))
-        RegistroChart(entries = entries, selectedIndex = selectedIndex, onSelect = onSelect)
-        Spacer(modifier = Modifier.height(16.dp))
-        RegistroDayDetails(entries = entries, selectedIndex = selectedIndex)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("Peso en ayunas", style = MaterialTheme.typography.titleMedium)
+            TextField(
+                value = state.weightInput,
+                onValueChange = onWeightChange,
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                label = { Text("kg") },
+                modifier = Modifier.width(140.dp)
+            )
+        }
     }
 }
 
-/**
- * Leyenda simple que explica los colores utilizados en el gráfico.
- */
+@Composable
+private fun RegistroTrainingCard(
+    state: RegistroDailyUiState,
+    onCardioMinutesChange: (String) -> Unit,
+    onCardioCompletedChange: (Boolean) -> Unit,
+    onGymTrainedChange: (Boolean) -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp))
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Cardio", style = MaterialTheme.typography.titleMedium)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextField(
+                        value = state.cardioMinutesInput,
+                        onValueChange = onCardioMinutesChange,
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        label = { Text("min") },
+                        modifier = Modifier.width(100.dp)
+                    )
+                    Checkbox(checked = state.cardioCompleted, onCheckedChange = onCardioCompletedChange)
+                }
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(imageVector = Icons.Rounded.FitnessCenter, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Gimnasio", style = MaterialTheme.typography.titleMedium)
+                }
+                Switch(
+                    checked = state.gymTrained,
+                    onCheckedChange = onGymTrainedChange,
+                    colors = SwitchDefaults.colors()
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RegistroHydrationCard(
+    state: RegistroDailyUiState,
+    onWaterGoalChange: (String) -> Unit,
+    onWaterDelta: (Double) -> Unit,
+    onSaltGoalChange: (String) -> Unit,
+    onSaltDelta: (Double) -> Unit,
+    onSaltOkChange: (Boolean) -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp))
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(imageVector = Icons.Rounded.WaterDrop, contentDescription = null)
+                    Text("Agua", style = MaterialTheme.typography.titleMedium)
+                }
+                TextField(
+                    value = state.waterGoalInput,
+                    onValueChange = onWaterGoalChange,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    label = { Text("Meta L") },
+                    modifier = Modifier.width(120.dp)
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Consumido: ${String.format(Locale.US, "%.1f L", state.waterConsumed)}", style = MaterialTheme.typography.bodyMedium)
+                Button(onClick = { onWaterDelta(1.0) }, colors = ButtonDefaults.filledTonalButtonColors()) { Text("+1L") }
+                OutlinedButton(onClick = { onWaterDelta(-1.0) }) { Text("-1L") }
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Sal", style = MaterialTheme.typography.titleMedium)
+                TextField(
+                    value = state.saltGoalInput,
+                    onValueChange = onSaltGoalChange,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    label = { Text("Meta g") },
+                    modifier = Modifier.width(120.dp)
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Consumida: ${String.format(Locale.US, "%.1f g", state.saltConsumed)}", style = MaterialTheme.typography.bodyMedium)
+                Button(onClick = { onSaltDelta(0.5) }, colors = ButtonDefaults.filledTonalButtonColors()) { Text("+0.5g") }
+                OutlinedButton(onClick = { onSaltDelta(-0.5) }) { Text("-0.5g") }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = state.saltOk, onCheckedChange = onSaltOkChange)
+                    Text("Dentro del plan", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RegistroNutritionCard(
+    state: RegistroDailyUiState,
+    onCaloriesPlanChange: (Boolean) -> Unit,
+    onSupplementationChange: (Boolean) -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp))
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Calorías y macros", style = MaterialTheme.typography.titleMedium)
+                Checkbox(checked = state.caloriesPlanCompleted, onCheckedChange = onCaloriesPlanChange)
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                val caloriesText = state.calories?.toInt()?.toString() ?: "—"
+                val proteinText = state.protein?.toInt()?.let { "${it}g" } ?: "—"
+                val carbsText = state.carbs?.toInt()?.let { "${it}g" } ?: "—"
+                val fatText = state.fat?.toInt()?.let { "${it}g" } ?: "—"
+                Text("Calorías: $caloriesText", style = MaterialTheme.typography.bodyMedium)
+                Text("P: $proteinText  C: $carbsText  G: $fatText", style = MaterialTheme.typography.bodyMedium)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Suplementación", style = MaterialTheme.typography.titleMedium)
+                Checkbox(checked = state.supplementationCompleted, onCheckedChange = onSupplementationChange)
+            }
+        }
+    }
+}
+
+@Composable
+private fun RegistroProgressCard(progress: ProgressSnapshot) {
+    val today = remember { java.time.LocalDate.now() }
+    val isDark = isSystemInDarkTheme()
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("Progreso (últimas 4 semanas)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            ProgressCircleLast28Days(
+                today = today,
+                snapshot = progress,
+                isDark = isDark,
+                onRingSelected = {},
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f)
+                    .padding(horizontal = 16.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun RegistroHistoryCard(
+    entries: List<RegistroDayEntry>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text("Historial reciente", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            RegistroLegend()
+            RegistroChart(entries = entries, selectedIndex = selectedIndex, onSelect = onSelect)
+            RegistroDayDetails(entries = entries, selectedIndex = selectedIndex)
+        }
+    }
+}
+
 @Composable
 private fun RegistroLegend() {
     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -176,7 +502,6 @@ private fun RegistroLegend() {
     }
 }
 
-/** Elemento individual de la leyenda con un rectángulo de color y texto. */
 @Composable
 private fun LegendItem(color: Color, label: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -186,14 +511,11 @@ private fun LegendItem(color: Color, label: String) {
                 .clip(RoundedCornerShape(2.dp))
                 .background(color)
         )
-        Spacer(modifier = Modifier.size(6.dp))
+        Spacer(modifier = Modifier.width(6.dp))
         Text(label, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
-/**
- * Dibuja el gráfico combinado con scroll horizontal y snapping por día.
- */
 @Composable
 private fun RegistroChart(
     entries: List<RegistroDayEntry>,
@@ -203,12 +525,13 @@ private fun RegistroChart(
     val lazyListState = rememberLazyListState()
     val flingBehavior = rememberSnapFlingBehavior(lazyListState)
 
-    // Calcula los rangos de valores para normalizar las líneas del gráfico.
     val weightRange = remember(entries) { valueRange(entries.mapNotNull { it.weight }) }
     val calorieRange = remember(entries) { valueRange(entries.mapNotNull { it.calories }) }
 
     LazyRow(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(ChartHeight),
         state = lazyListState,
         flingBehavior = flingBehavior,
         contentPadding = PaddingValues(horizontal = 8.dp),
@@ -228,9 +551,6 @@ private fun RegistroChart(
     }
 }
 
-/**
- * Tarjeta que contiene el lienzo del día y su etiqueta.
- */
 @Composable
 private fun RegistroChartCard(
     entry: RegistroDayEntry,
@@ -244,7 +564,7 @@ private fun RegistroChartCard(
     val containerColor = if (selected) {
         MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
     } else {
-        MaterialTheme.colorScheme.surface
+        MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp)
     }
 
     Column(
@@ -257,7 +577,7 @@ private fun RegistroChartCard(
             colors = CardDefaults.cardColors(containerColor = containerColor),
             shape = shape,
             modifier = Modifier
-                .height(ChartHeight)
+                .height(ChartHeight - 48.dp)
                 .fillMaxWidth()
         ) {
             RegistroChartCanvas(
@@ -276,9 +596,6 @@ private fun RegistroChartCard(
     }
 }
 
-/**
- * Lienzo que dibuja las líneas de peso y calorías para un día específico.
- */
 @Composable
 private fun RegistroChartCanvas(
     entry: RegistroDayEntry,
@@ -303,7 +620,6 @@ private fun RegistroChartCanvas(
             val bottom = height - paddingY
             val chartHeight = (bottom - top).coerceAtLeast(1f)
 
-            // Línea base del gráfico para referencia visual.
             drawLine(
                 color = axisPaint,
                 start = Offset(x = left, y = bottom),
@@ -311,7 +627,6 @@ private fun RegistroChartCanvas(
                 strokeWidth = 2f
             )
 
-            // Dibuja líneas horizontales punteadas para facilitar la lectura.
             val middle = bottom - chartHeight / 2f
             drawLine(
                 color = axisPaint.copy(alpha = 0.4f),
@@ -321,7 +636,6 @@ private fun RegistroChartCanvas(
                 pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 8f))
             )
 
-            // Funciones auxiliares para transformar valores reales a coordenadas en pantalla.
             fun Double.toWeightY(): Float {
                 if (weightRange == null) return bottom
                 val min = weightRange.start
@@ -343,7 +657,6 @@ private fun RegistroChartCanvas(
             val previousX = left
             val nextX = right
 
-            // Dibuja la línea del peso desde el día anterior al actual.
             val previousWeight = previous?.weight
             val currentWeight = entry.weight
             if (previousWeight != null && currentWeight != null) {
@@ -363,7 +676,6 @@ private fun RegistroChartCanvas(
                 )
             }
 
-            // Dibuja la línea de calorías utilizando un estilo punteado.
             val previousCalories = previous?.calories
             val currentCalories = entry.calories
             if (previousCalories != null && currentCalories != null) {
@@ -387,47 +699,34 @@ private fun RegistroChartCanvas(
     }
 }
 
-/**
- * Panel que muestra el detalle del día seleccionado con macros y calorías.
- */
 @Composable
 private fun RegistroDayDetails(entries: List<RegistroDayEntry>, selectedIndex: Int) {
     val entry = entries.getOrNull(selectedIndex) ?: return
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(3.dp))
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("Detalle del día", style = MaterialTheme.typography.titleMedium)
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(entry.label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(12.dp))
-            MacroRow(label = "Peso", value = entry.weight, suffix = "kg")
-            MacroRow(label = "Calorías", value = entry.calories, suffix = "kcal", decimals = 0)
-            MacroRow(label = "Proteínas", value = entry.protein, suffix = "g")
-            MacroRow(label = "Grasas", value = entry.fat, suffix = "g")
-            MacroRow(label = "Carbos", value = entry.carbs, suffix = "g")
-        }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Detalle del día", style = MaterialTheme.typography.titleMedium)
+        Text(entry.label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+        MacroRow(label = "Peso", value = entry.weight, suffix = "kg")
+        MacroRow(label = "Calorías", value = entry.calories, suffix = "kcal", decimals = 0)
+        MacroRow(label = "Proteínas", value = entry.protein, suffix = "g")
+        MacroRow(label = "Grasas", value = entry.fat, suffix = "g")
+        MacroRow(label = "Carbos", value = entry.carbs, suffix = "g")
     }
 }
 
-/**
- * Muestra un valor numérico formateado con su etiqueta y sufijo.
- */
 @Composable
 private fun MacroRow(label: String, value: Double?, suffix: String, decimals: Int = 1) {
     val display = value?.let {
         if (decimals == 0) {
             "${it.toInt()} $suffix"
         } else {
-            "${"%.${decimals}f".format(it)} $suffix"
+            "${String.format(Locale.US, "%.${decimals}f", it)} $suffix"
         }
     } ?: "Sin dato"
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = 2.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(label, style = MaterialTheme.typography.bodyMedium)
@@ -435,15 +734,11 @@ private fun MacroRow(label: String, value: Double?, suffix: String, decimals: In
     }
 }
 
-/**
- * Calcula el rango mínimo y máximo de una lista de valores numéricos.
- */
 private fun valueRange(values: List<Double>): ClosedFloatingPointRange<Double>? {
     if (values.isEmpty()) return null
     val min = values.minOrNull() ?: return null
     val max = values.maxOrNull() ?: return null
     if (min == max) {
-        // Amplía ligeramente el rango para evitar divisiones por cero en el gráfico.
         return (min - 1.0)..(max + 1.0)
     }
     return min..max
